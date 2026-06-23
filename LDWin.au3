@@ -118,10 +118,12 @@ While 1
 			Switch $aMsg[0]
 				Case $Nic_Friendly
 					$Nic_Friend = GUICtrlRead($Nic_Friendly)
-					$IData = IniReadSection(@TempDir & "\LinkData.txt", $Nic_Friend)
-					$Hardware = $IData[1][1]
-					$IPAddr = $IData[3][1]
-					$MAC = $IData[4][1]
+					; Read each value by key. Reading by array position (IniReadSection)
+					; crashed with "Subscript used on non-accessible variable" for adapters
+					; whose section is missing an IP/MAC/SettingID line.
+					$Hardware = IniRead(@TempDir & "\LinkData.txt", $Nic_Friend, "ProductName", "")
+					$IPAddr = IniRead(@TempDir & "\LinkData.txt", $Nic_Friend, "IPAddress", "")
+					$MAC = IniRead(@TempDir & "\LinkData.txt", $Nic_Friend, "MACAddress", "")
 					GUICtrlCreateLabel($Hardware, 145, 62, 350, 20)
 					GUICtrlCreateLabel($IPAddr, 390, 89, 120, 20)
 					GUICtrlCreateLabel($MAC, 145, 89, 120, 20)
@@ -172,7 +174,7 @@ Func GetCDP($Nic_Friendly)
 	FileWriteLine($SaveFile, $Nic_Friend)
 	FileWriteLine($SaveFile, "(" & $Hardware & ", " & $MAC & ", " & $IPAddr & ") is connected to:")
 	FileWriteLine($SaveFile, "------------------------------------------------------")
-	$ID = $IData[2][1]
+	$ID = IniRead(@TempDir & "\LinkData.txt", $Nic_Friend, "SettingID", "")
 
 	;===== Packet capture ===============================================================
 	; Capture uses Npcap. The legacy Microolap tcpdump build loaded its own kernel driver,
@@ -196,10 +198,16 @@ Func GetCDP($Nic_Friendly)
 			"need to be disabled.")
 		Return
 	EndIf
-	; Npcap names interfaces \Device\NPF_{GUID}; $ID holds the adapter's {GUID} (SettingID).
-	; Prepend the Npcap directory to PATH so tcpdump finds Npcap's wpcap.dll.
-	$CaptureCmd = 'set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & @TempDir & '\tcpdump.exe" -i \Device\NPF_' & $ID & _
-			' -nn -v -s 1500 -c 1 "' & $BPF_FILTER & '" >"%TEMP%\Data_Out.txt" 2>nul'
+	; Resolve the capture interface from tcpdump's own device list (-D), matching the
+	; adapter GUID, so we use exactly the name Npcap exposes. Fall back to the standard
+	; \Device\NPF_{GUID} form if the lookup fails.
+	$Device = _NpcapDevice($ID)
+	If $Device = "" Then $Device = "\Device\NPF_" & $ID
+	; Prepend the Npcap directory to PATH so tcpdump finds Npcap's wpcap.dll. tcpdump's
+	; stderr is kept (not discarded) so failures can be surfaced if no data is captured.
+	FileDelete(@TempDir & "\tcpdump_err.txt")
+	$CaptureCmd = 'set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & @TempDir & '\tcpdump.exe" -i "' & $Device & '"' & _
+			' -nn -v -s 1500 -c 1 "' & $BPF_FILTER & '" >"%TEMP%\Data_Out.txt" 2>"%TEMP%\tcpdump_err.txt"'
 	$TCPDmpPID = Run(@ComSpec & " /c " & $CaptureCmd, "", @SW_HIDE)
 	$Secs = 1
 	$Status1 = GUICtrlCreateLabel("Running ... May take up to 60 seconds between link announcements ...", 120, 343, 350, 20)
@@ -356,6 +364,15 @@ Func GetCDP($Nic_Friendly)
 		GUICtrlCreateLabel("NO LINK DATA FOUND ... !", 210, 348, 150, 20)
 		FileClose($SaveFile)
 		FileDelete(@TempDir & "\SaveData.txt")
+		; If tcpdump itself errored (bad interface, missing wpcap.dll, ...) surface it -
+		; otherwise "no data" just means no CDP/LLDP announcement arrived within 60s.
+		$tcpdumpErr = ""
+		If FileExists(@TempDir & "\tcpdump_err.txt") Then $tcpdumpErr = StringStripWS(FileRead(@TempDir & "\tcpdump_err.txt"), 3)
+		If $tcpdumpErr <> "" Then
+			MsgBox(48, "Capture Error", _
+				"tcpdump could not capture on this interface:" & @CRLF & @CRLF & $tcpdumpErr & @CRLF & @CRLF & _
+				"Interface used: " & $Device)
+		EndIf
 	EndIf
 	FileClose($SaveFile)
 	FileClose($file)
@@ -392,6 +409,8 @@ Func OnExit()
 	FileDelete(@TempDir & "\tcpdump.exe")
 	FileDelete(@TempDir & "\SaveData.txt")
 	FileDelete(@TempDir & "\donate.ico")
+	FileDelete(@TempDir & "\tcpdump_err.txt")
+	FileDelete(@TempDir & "\ldwin_devs.txt")
 EndFunc   ;==>OnExit
 
 ; Returns True when Npcap appears to be installed. Npcap is the maintained, HVCI /
@@ -405,6 +424,31 @@ Func _NpcapInstalled()
 	If RegRead("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\npcap", "Start") <> "" Then Return True
 	Return False
 EndFunc   ;==>_NpcapInstalled
+
+; Asks tcpdump for its interface list (-D) and returns the device name whose entry
+; contains the given adapter GUID, e.g. "\Device\NPF_{GUID}". Returns "" if not found
+; (the caller then falls back to the standard \Device\NPF_{GUID} form).
+Func _NpcapDevice($sGuid)
+	If $sGuid = "" Then Return ""
+	Local $f = @TempDir & "\ldwin_devs.txt"
+	FileDelete($f)
+	RunWait(@ComSpec & ' /c set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & @TempDir & '\tcpdump.exe" -D >"' & $f & '" 2>&1', "", @SW_HIDE)
+	Local $data = FileRead($f)
+	FileDelete($f)
+	Local $aLines = StringSplit($data, @LF)
+	For $i = 1 To $aLines[0]
+		If StringInStr($aLines[$i], $sGuid) Then
+			Local $p = StringInStr($aLines[$i], "\Device")
+			If $p > 0 Then
+				Local $rest = StringTrimLeft($aLines[$i], $p - 1)
+				Local $sp = StringInStr($rest, " ")
+				If $sp > 0 Then $rest = StringLeft($rest, $sp - 1)
+				Return StringStripWS($rest, 3)
+			EndIf
+		EndIf
+	Next
+	Return ""
+EndFunc   ;==>_NpcapDevice
 
 Func Help()
 	$LDWinHelp = GUICreate("Link Discovery for Windows : Help", 550, 570, (@DesktopWidth - 550) / 2, (@DesktopHeight - 570) / 2)

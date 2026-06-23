@@ -6,10 +6,15 @@ Release 2.3 - 23 Jun 2026
   HVCI blocks. Npcap's driver is signed for and compatible with Core Isolation
 * LDWin now detects whether Npcap is installed and, if not, points the user to
   https://npcap.com/ to install it (Core Isolation does not need to be disabled)
-* Adapter is now opened via Npcap's \Device\NPF_{GUID} naming
-* BUILD NOTE: the bundled tcpdump.exe must now be a build linked against Npcap's
-  wpcap.dll (e.g. WinDump or a tcpdump-for-Windows Npcap build), not the old
-  self-contained Microolap build
+* Adapter is now opened via the interface tcpdump reports for the GUID (-D),
+  falling back to Npcap's \Device\NPF_{GUID} naming
+* Fixed a crash ("Subscript used on non-accessible variable") when selecting a
+  network card whose details were incomplete - values are now read by key
+* tcpdump capture errors (bad interface, missing wpcap.dll, ...) are now shown
+  instead of silently reporting "no link data found"
+* BUILD NOTE: the bundled tcpdump.exe is built against Npcap's wpcap.dll by the
+  GitHub Actions workflow (.github/workflows/build.yml), not the old self-
+  contained Microolap build
 
 
 Release 2.2 - 28 Sept 2015
