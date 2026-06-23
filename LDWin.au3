@@ -24,7 +24,6 @@ $VER = "2.3"
 #include <String.au3>
 #include <GuiButton.au3>
 #include <ComboConstants.au3>
-#include <GUIHyperLink.au3>
 
 $WinLDPVer = "LDWin - v" & $VER & " - Chris Hall - 2010-" & @YEAR
 If IsAdmin() = 0 Then
@@ -42,6 +41,11 @@ GUISetIcon("network.ico")
 $LDWinHelp = 99999
 $donate = ""
 $gotit = ""
+; Clickable link labels in the Help dialog (replaces the third-party GUIHyperLink UDF
+; so the project compiles with a stock AutoIt install).
+$linkCDP = ""
+$linkLLDP = ""
+$linkBlog = ""
 $log = FileOpen(@TempDir & "\LinkData.txt", 2)
 $wbemFlagReturnImmediately = 0x10
 $wbemFlagForwardOnly = 0x20
@@ -147,6 +151,12 @@ While 1
 					ShellExecute("https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=KT462HRW7XQ3J")
 				Case $gotit
 					GUIDelete($LDWinHelp)
+				Case $linkCDP
+					ShellExecute('https://en.wikipedia.org/wiki/Cisco_Discovery_Protocol')
+				Case $linkLLDP
+					ShellExecute('https://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol')
+				Case $linkBlog
+					ShellExecute('http://chall32.blogspot.com')
 			EndSwitch
 
 	EndSwitch
@@ -405,9 +415,9 @@ Func Help()
 	GUICtrlCreateGroup("Which Methods of Link Discovery does LDWin Support? ", 15, 100, 520, 90)
 	GUICtrlCreateLabel("LDWin supports the following methods of link discovery:", 30, 125, 500, 20)
 	GUICtrlCreateLabel("   - CDP : Cisco Discovery Protocol", 30, 145, 500, 20)
-	_GUICtrlHyperLink_Create("Read more on CDP", 240, 145, 130, 15, 0x0000FF, 0x0000FF, -1, 'https://en.wikipedia.org/wiki/Cisco_Discovery_Protocol', 'Wikipedia: Cisco Discovery Protocol', $LDWinHelp)
+	$linkCDP = _LinkLabel("Read more on CDP", 240, 145, 130, 15, 'Wikipedia: Cisco Discovery Protocol')
 	GUICtrlCreateLabel("   - LLDP : Link Layer Discovery Protocol", 30, 160, 500, 20)
-	_GUICtrlHyperLink_Create("Read more on LLDP", 240, 160, 130, 15, 0x0000FF, 0x0000FF, -1, 'https://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol', 'Wikipedia: Link Layer Discovery Protocol', $LDWinHelp)
+	$linkLLDP = _LinkLabel("Read more on LLDP", 240, 160, 130, 15, 'Wikipedia: Link Layer Discovery Protocol')
 
 	GUICtrlCreateGroup("How to use LDWin: ", 15, 200, 520, 200)
 	GUICtrlCreateLabel("1. From the 'Network Connection:' drop down, select the network adaptor over which you wish to obtain network link information" & @CRLF & @CRLF & _
@@ -421,10 +431,22 @@ Func Help()
 			"If LDWin helped you, how about buying me a beer? Use the donate button below. THANK YOU!", 30, 435, 500, 60)
 
 	GUICtrlCreateLabel("LDWin - Chris Hall - 2010-" & @YEAR, 130, 530, 200, 40)
-	_GUICtrlHyperLink_Create("chall32.blogspot.com", 300, 530, 130, 15, 0x0000FF, 0x0000FF, -1, 'http://chall32.blogspot.com', 'What The .....? Blog', $LDWinHelp)
+	$linkBlog = _LinkLabel("chall32.blogspot.com", 300, 530, 130, 15, 'What The .....? Blog')
 
 	$donate = GUICtrlCreateButton("Donate", 10, 510, 100, 35, $BS_ICON)
 	GUICtrlSetImage(-1, @TempDir & "\donate.ico")
 	$gotit = GUICtrlCreateButton("Got it!", 440, 520, 100)
 	GUISetState()
 EndFunc   ;==>Help
+
+; Creates a blue, underlined, clickable label that behaves like a hyperlink.
+; The caller stores the returned control id and opens the URL on click (see the
+; main message loop). This avoids the third-party GUIHyperLink UDF so LDWin
+; compiles against a stock AutoIt install.
+Func _LinkLabel($sText, $iX, $iY, $iW, $iH, $sTip)
+	Local $id = GUICtrlCreateLabel($sText, $iX, $iY, $iW, $iH)
+	GUICtrlSetColor(-1, 0x0000FF)
+	GUICtrlSetFont(-1, 8.5, 400, 4)
+	GUICtrlSetTip(-1, $sTip)
+	Return $id
+EndFunc   ;==>_LinkLabel
