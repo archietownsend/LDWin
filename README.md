@@ -49,6 +49,17 @@ On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature b
 > with AutoIt's Aut2Exe, then commits the rebuilt binaries back. The old self-contained
 > Microolap `tcpdump.exe` shipped with LDWin &le; 2.2 will not work, because it loads its
 > own HVCI-blocked driver.
+>
+> **Code-signing (recommended):** unsigned AutoIt binaries that bundle a packet sniffer are
+> frequently false-flagged by Windows Defender ("contains a virus or potentially unwanted
+> software"). To sign the binaries during the build, add two repository secrets and the
+> workflow will `signtool sign` both `tcpdump.exe` and `LDWin.exe`:
+>
+> - `CODE_SIGN_PFX_BASE64` — your code-signing certificate (`.pfx`), base64-encoded
+>   (e.g. `certutil -encode cert.pfx cert.b64`, or `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))`).
+> - `CODE_SIGN_PASSWORD` — the `.pfx` password.
+>
+> Without these secrets the build still succeeds but the binaries are left unsigned.
 
 [Npcap]: https://npcap.com/
 
