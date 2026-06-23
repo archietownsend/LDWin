@@ -108,7 +108,13 @@ jobs:
             }
             if ($p.HasExited) { break }
           }
+          # Kill every Aut2Exe/AutoIt helper by name - the GUI process spawns children
+          # that linger and would keep the Actions step from ever completing if only the
+          # launched PID were terminated.
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Get-Process -Name "Aut2exe","Aut2exe_x64","AutoIt3" -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
           if (-not (Test-Path $out) -or (Get-Item $out).Length -le 0) {
             throw "Compilation failed - LDWin.exe was not produced"
           }
