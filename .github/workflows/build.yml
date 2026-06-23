@@ -80,21 +80,39 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Prefer the 32-bit Aut2exe.exe (sorts before Aut2exe_x64.exe).
           $aut2exe = Get-ChildItem -Path "C:\Program Files (x86)\AutoIt3","C:\Program Files\AutoIt3" `
-            -Recurse -Filter "Aut2exe*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            -Recurse -Filter "Aut2exe*.exe" -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -First 1
           if (-not $aut2exe) { throw "Aut2Exe not found after installing AutoIt3" }
           Write-Host "Compiler: $($aut2exe.FullName)"
-          # Remove the checked-out exe so its continued presence can't mask a failed compile.
-          Remove-Item -Force "$PWD\LDWin.exe" -ErrorAction SilentlyContinue
-          # Aut2Exe is a GUI app, so launch via Start-Process -Wait (PowerShell's call
-          # operator returns immediately for GUI apps and would not wait for the compile).
-          # FileInstall() resolves relative to the script dir, so use absolute paths.
-          $args = @('/in', "$PWD\LDWin.au3", '/out', "$PWD\LDWin.exe",
-                    '/icon', "$PWD\network.ico", '/comp', '4', '/x86')
-          $p = Start-Process -FilePath $aut2exe.FullName -ArgumentList $args -Wait -NoNewWindow -PassThru
-          Write-Host "Aut2Exe exit code: $($p.ExitCode)"
-          if (-not (Test-Path "$PWD\LDWin.exe")) { throw "Compilation failed - LDWin.exe was not produced" }
-          Write-Host "Built LDWin.exe ($((Get-Item LDWin.exe).Length) bytes)"
+          # Remove the checked-out exe so its presence can't mask a failed compile.
+          $out = "$PWD\LDWin.exe"
+          Remove-Item -Force $out -ErrorAction SilentlyContinue
+          # Aut2Exe is a GUI app that does the compile but does not always exit cleanly
+          # on a headless runner (it would hang forever under -Wait). So launch it
+          # detached and poll for the output file becoming present and size-stable,
+          # then terminate the lingering process. FileInstall() resolves relative to
+          # the script dir, so pass absolute paths.
+          $argline = @('/in', "$PWD\LDWin.au3", '/out', $out,
+                       '/icon', "$PWD\network.ico", '/comp', '4', '/x86')
+          $p = Start-Process -FilePath $aut2exe.FullName -ArgumentList $argline -PassThru
+          $deadline = (Get-Date).AddMinutes(5)
+          $stable = $false
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 3
+            if (Test-Path $out) {
+              $s1 = (Get-Item $out).Length
+              Start-Sleep -Seconds 2
+              $s2 = (Get-Item $out).Length
+              if ($s1 -gt 0 -and $s1 -eq $s2) { $stable = $true; break }
+            }
+            if ($p.HasExited) { break }
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path $out) -or (Get-Item $out).Length -le 0) {
+            throw "Compilation failed - LDWin.exe was not produced"
+          }
+          Write-Host "Built LDWin.exe ($((Get-Item $out).Length) bytes, stable=$stable)"
 
       - name: Upload LDWin.exe artifact
         uses: actions/upload-artifact@v4
