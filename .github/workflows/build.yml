@@ -1,0 +1,110 @@
+name: Build LDWin
+
+# Full Windows build pipeline, run from the Actions tab ("Run workflow"):
+#   1. Build a modern, Npcap/wpcap-linked tcpdump.exe from source (the old bundled
+#      Microolap build loaded its own driver, which Windows 11 Core Isolation blocks).
+#   2. Compile LDWin.au3 -> LDWin.exe with AutoIt's Aut2Exe (FileInstall embeds the
+#      freshly built tcpdump.exe).
+#   3. Optionally commit the rebuilt tcpdump.exe + LDWin.exe back to the branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_exe:
+        description: "Commit the rebuilt tcpdump.exe and LDWin.exe back to this branch"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  NPCAP_SDK_URL: https://npcap.com/dist/npcap-sdk-1.13.zip
+  LIBPCAP_TAG: libpcap-1.10.5
+  TCPDUMP_TAG: tcpdump-4.99.5
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Step 1: build an Npcap-linked tcpdump.exe from source ----
+      - name: Download Npcap SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "$env:NPCAP_SDK_URL" -OutFile npcap-sdk.zip
+          Expand-Archive -Path npcap-sdk.zip -DestinationPath C:\npcap-sdk -Force
+          Get-ChildItem C:\npcap-sdk
+
+      - name: Clone libpcap and tcpdump
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch $env:LIBPCAP_TAG https://github.com/the-tcpdump-group/libpcap C:\src\libpcap
+          git clone --depth 1 --branch $env:TCPDUMP_TAG https://github.com/the-tcpdump-group/tcpdump C:\src\tcpdump
+
+      - name: Build libpcap (static, against Npcap SDK)
+        shell: pwsh
+        run: |
+          cmake -S C:\src\libpcap -B C:\src\libpcap\build -A Win32 `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DCMAKE_PREFIX_PATH="C:\npcap-sdk" -DPacket_ROOT="C:\npcap-sdk" `
+            -DCMAKE_INSTALL_PREFIX="C:\libpcap-install"
+          cmake --build C:\src\libpcap\build --config Release --target install
+          Get-ChildItem -Recurse C:\libpcap-install | Select-Object FullName
+
+      - name: Build tcpdump (against the built libpcap)
+        shell: pwsh
+        run: |
+          cmake -S C:\src\tcpdump -B C:\src\tcpdump\build -A Win32 `
+            -DCMAKE_PREFIX_PATH="C:\libpcap-install;C:\npcap-sdk" `
+            -DPCAP_ROOT="C:\libpcap-install" -DPacket_ROOT="C:\npcap-sdk"
+          cmake --build C:\src\tcpdump\build --config Release
+          $exe = Get-ChildItem -Recurse C:\src\tcpdump\build -Filter tcpdump.exe | Select-Object -First 1
+          if (-not $exe) { throw "tcpdump.exe was not produced" }
+          Write-Host "Built $($exe.FullName) ($($exe.Length) bytes)"
+          Copy-Item $exe.FullName "$env:GITHUB_WORKSPACE\tcpdump.exe" -Force
+
+      - name: Upload tcpdump.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tcpdump
+          path: tcpdump.exe
+          if-no-files-found: error
+
+      # ---- Step 2: compile LDWin.exe with the new tcpdump.exe embedded ----
+      - name: Install AutoIt3 (provides the Aut2Exe compiler)
+        shell: pwsh
+        run: choco install autoit --yes --no-progress
+
+      - name: Compile LDWin.au3 -> LDWin.exe
+        shell: pwsh
+        run: |
+          $aut2exe = Get-ChildItem -Path "C:\Program Files (x86)\AutoIt3","C:\Program Files\AutoIt3" `
+            -Recurse -Filter "Aut2exe*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $aut2exe) { throw "Aut2Exe not found after installing AutoIt3" }
+          Write-Host "Compiler: $($aut2exe.FullName)"
+          & $aut2exe.FullName /in "LDWin.au3" /out "LDWin.exe" /icon "network.ico" /comp 4 /x86
+          if (-not (Test-Path "LDWin.exe")) { throw "Compilation failed - LDWin.exe was not produced" }
+          Write-Host "Built LDWin.exe ($((Get-Item LDWin.exe).Length) bytes)"
+
+      - name: Upload LDWin.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LDWin
+          path: LDWin.exe
+          if-no-files-found: error
+
+      # ---- Step 3: commit the rebuilt binaries back ----
+      - name: Commit rebuilt binaries
+        if: inputs.commit_exe
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tcpdump.exe LDWin.exe
+          $changed = (git status --porcelain tcpdump.exe LDWin.exe)
+          if (-not $changed) { Write-Host "Binaries unchanged - nothing to commit"; exit 0 }
+          git commit -m "CI: rebuild Npcap-linked tcpdump.exe and LDWin.exe [skip ci]"
+          git push
