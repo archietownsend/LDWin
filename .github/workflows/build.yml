@@ -76,8 +76,16 @@ jobs:
           PFX_B64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $pfxBytes = $null
           if ($env:PFX_B64) {
-            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:PFX_B64))
+            try {
+              $pfxBytes = [Convert]::FromBase64String($env:PFX_B64)
+            } catch {
+              Write-Host "::warning::CODE_SIGN_PFX_BASE64 is set but is not valid base-64 - skipping signing. Error: $_"
+            }
+          }
+          if ($pfxBytes) {
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", $pfxBytes)
             $st = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
                   Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
             if (-not $st) { throw "signtool.exe not found on the runner" }
@@ -87,7 +95,7 @@ jobs:
             Write-Host "Code-signing enabled (signtool: $($st.FullName))"
           } else {
             "SIGNING=0" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-            Write-Host "::warning::No CODE_SIGN_PFX_BASE64 secret set - binaries will be left unsigned."
+            Write-Host "::warning::No valid CODE_SIGN_PFX_BASE64 secret - binaries will be left unsigned."
           }
 
       - name: Sign tcpdump.exe
