@@ -12,6 +12,11 @@ Release 2.3 - 23 Jun 2026
   network card whose details were incomplete - values are now read by key
 * tcpdump capture errors (bad interface, missing wpcap.dll, ...) are now shown
   instead of silently reporting "no link data found"
+* tcpdump.exe now ships next to LDWin.exe and runs in place - it is no longer
+  extracted to and executed from %TEMP% (a pattern antivirus tools flag). Keep
+  the two files in the same folder
+* Build stamps version/publisher metadata and no longer compresses the exe, to
+  reduce antivirus false positives
 * BUILD NOTE: the bundled tcpdump.exe is built against Npcap's wpcap.dll by the
   GitHub Actions workflow (.github/workflows/build.yml), not the old self-
   contained Microolap build
