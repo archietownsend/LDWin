@@ -84,8 +84,16 @@ jobs:
             -Recurse -Filter "Aut2exe*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $aut2exe) { throw "Aut2Exe not found after installing AutoIt3" }
           Write-Host "Compiler: $($aut2exe.FullName)"
-          & $aut2exe.FullName /in "LDWin.au3" /out "LDWin.exe" /icon "network.ico" /comp 4 /x86
-          if (-not (Test-Path "LDWin.exe")) { throw "Compilation failed - LDWin.exe was not produced" }
+          # Remove the checked-out exe so its continued presence can't mask a failed compile.
+          Remove-Item -Force "$PWD\LDWin.exe" -ErrorAction SilentlyContinue
+          # Aut2Exe is a GUI app, so launch via Start-Process -Wait (PowerShell's call
+          # operator returns immediately for GUI apps and would not wait for the compile).
+          # FileInstall() resolves relative to the script dir, so use absolute paths.
+          $args = @('/in', "$PWD\LDWin.au3", '/out', "$PWD\LDWin.exe",
+                    '/icon', "$PWD\network.ico", '/comp', '4', '/x86')
+          $p = Start-Process -FilePath $aut2exe.FullName -ArgumentList $args -Wait -NoNewWindow -PassThru
+          Write-Host "Aut2Exe exit code: $($p.ExitCode)"
+          if (-not (Test-Path "$PWD\LDWin.exe")) { throw "Compilation failed - LDWin.exe was not produced" }
           Write-Host "Built LDWin.exe ($((Get-Item LDWin.exe).Length) bytes)"
 
       - name: Upload LDWin.exe artifact
