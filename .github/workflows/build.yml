@@ -130,8 +130,9 @@ jobs:
           # detached and poll for the output file becoming present and size-stable,
           # then terminate the lingering process. FileInstall() resolves relative to
           # the script dir, so pass absolute paths.
+          # /comp 0 = no compression (a compressed payload looks more like a packer to AV).
           $argline = @('/in', "$PWD\LDWin.au3", '/out', $out,
-                       '/icon', "$PWD\network.ico", '/comp', '4', '/x86')
+                       '/icon', "$PWD\network.ico", '/comp', '0', '/x86')
           $p = Start-Process -FilePath $aut2exe.FullName -ArgumentList $argline -PassThru
           $deadline = (Get-Date).AddMinutes(5)
           $stable = $false
@@ -157,6 +158,25 @@ jobs:
           }
           Write-Host "Built LDWin.exe ($((Get-Item $out).Length) bytes, stable=$stable)"
 
+      - name: Stamp version/publisher metadata (rcedit)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Empty version metadata raises an unsigned binary's heuristic score. Stamp proper
+          # ProductName/version/publisher fields with rcedit (Aut2Exe alone leaves them blank).
+          $rcedit = "$env:RUNNER_TEMP\rcedit-x64.exe"
+          Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile $rcedit
+          & $rcedit "$PWD\LDWin.exe" `
+            --set-version-string "ProductName" "LDWin" `
+            --set-version-string "FileDescription" "LDWin - Link Discovery for Windows (CDP/LLDP)" `
+            --set-version-string "CompanyName" "Chris Hall" `
+            --set-version-string "LegalCopyright" "(c) Chris Hall 2010-2026" `
+            --set-version-string "OriginalFilename" "LDWin.exe" `
+            --set-file-version "2.3.0.0" `
+            --set-product-version "2.3.0.0"
+          if ($LASTEXITCODE -ne 0) { throw "rcedit failed ($LASTEXITCODE)" }
+          Write-Host "Stamped version metadata onto LDWin.exe"
+
       - name: Sign LDWin.exe
         shell: pwsh
         env:
@@ -173,6 +193,16 @@ jobs:
         with:
           name: LDWin
           path: LDWin.exe
+          if-no-files-found: error
+
+      # LDWin.exe now runs tcpdump.exe from its own folder, so they must ship together.
+      - name: Upload release bundle (LDWin.exe + tcpdump.exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: LDWin-release
+          path: |
+            LDWin.exe
+            tcpdump.exe
           if-no-files-found: error
 
       # ---- Step 3: commit the rebuilt binaries back ----

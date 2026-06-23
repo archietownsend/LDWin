@@ -42,6 +42,11 @@ On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature b
 
 **Requirement:** [Npcap] must be installed (the free installer from https://npcap.com/ is fine). If it is not installed, LDWin will tell you and link you to the download. LDWin finds Npcap's libraries automatically; installing in "WinPcap API-compatible Mode" is optional.
 
+**Keep the files together:** `LDWin.exe` runs `tcpdump.exe` from its own folder, so the two must stay in the same directory (download the release bundle, not just `LDWin.exe`). LDWin will prompt you if `tcpdump.exe` is missing.
+
+### A note on antivirus / Windows Defender
+Because LDWin is an (unsigned) AutoIt program that ships a packet-capture tool (`tcpdump`), Windows Defender may false-flag it ("contains a virus or potentially unwanted software"). It is not malware. To reduce this LDWin no longer extracts/executes `tcpdump.exe` from `%TEMP%` (it runs it in place) and the build stamps proper version/publisher metadata, but the most reliable fixes are: (1) [submit the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission), and/or (2) code-sign it (see below). On your own machine you can also allow it in **Windows Security → Protection history**.
+
 > **Building from source:** both binaries are built automatically on Windows by the
 > [`Build LDWin`](.github/workflows/build.yml) GitHub Actions workflow — run it from the
 > repository's **Actions** tab ("Run workflow"). It builds `tcpdump.exe` from the tcpdump

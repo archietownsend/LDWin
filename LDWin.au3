@@ -30,11 +30,16 @@ If IsAdmin() = 0 Then
 	MsgBox(16, "Exiting", "This program requires Local Admistrator rights")
 	Exit
 EndIf
-; NOTE: the bundled tcpdump.exe must be a build linked against Npcap's wpcap.dll, not the
-; old Microolap build (<= 2.2) that loaded its own HVCI-blocked driver. The GitHub Actions
-; workflow (.github/workflows/build.yml) builds such a tcpdump.exe against the Npcap SDK
-; and compiles this script automatically.
-FileInstall("tcpdump.exe", @TempDir & '\', 1)
+; tcpdump.exe ships alongside LDWin.exe and is run in place from the program folder - it is
+; deliberately NOT embedded and extracted to %TEMP%, because dropping an executable into the
+; temp folder and running it is a behaviour antivirus engines flag. It must be an Npcap /
+; wpcap-linked build; the GitHub Actions workflow (.github/workflows/build.yml) produces one.
+$TCPDUMP = @ScriptDir & "\tcpdump.exe"
+If Not FileExists($TCPDUMP) Then
+	MsgBox(16, "Missing tcpdump.exe", "tcpdump.exe must be in the same folder as LDWin.exe." & @CRLF & @CRLF & _
+			"Please keep the program files together (download the full release, not just LDWin.exe).")
+	Exit
+EndIf
 FileInstall("donate.ico", @TempDir & '\', 1)
 GUISetIcon("network.ico")
 
@@ -206,7 +211,7 @@ Func GetCDP($Nic_Friendly)
 	; Prepend the Npcap directory to PATH so tcpdump finds Npcap's wpcap.dll. tcpdump's
 	; stderr is kept (not discarded) so failures can be surfaced if no data is captured.
 	FileDelete(@TempDir & "\tcpdump_err.txt")
-	$CaptureCmd = 'set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & @TempDir & '\tcpdump.exe" -i "' & $Device & '"' & _
+	$CaptureCmd = 'set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & $TCPDUMP & '" -i "' & $Device & '"' & _
 			' -nn -v -s 1500 -c 1 "' & $BPF_FILTER & '" >"%TEMP%\Data_Out.txt" 2>"%TEMP%\tcpdump_err.txt"'
 	$TCPDmpPID = Run(@ComSpec & " /c " & $CaptureCmd, "", @SW_HIDE)
 	$Secs = 1
@@ -406,7 +411,6 @@ Func OnExit()
 	If ProcessExists("tcpdump.exe") Then ProcessClose("tcpdump.exe")
 	FileClose($log)
 	FileDelete(@TempDir & "\LinkData.txt")
-	FileDelete(@TempDir & "\tcpdump.exe")
 	FileDelete(@TempDir & "\SaveData.txt")
 	FileDelete(@TempDir & "\donate.ico")
 	FileDelete(@TempDir & "\tcpdump_err.txt")
@@ -432,7 +436,7 @@ Func _NpcapDevice($sGuid)
 	If $sGuid = "" Then Return ""
 	Local $f = @TempDir & "\ldwin_devs.txt"
 	FileDelete($f)
-	RunWait(@ComSpec & ' /c set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & @TempDir & '\tcpdump.exe" -D >"' & $f & '" 2>&1', "", @SW_HIDE)
+	RunWait(@ComSpec & ' /c set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & $TCPDUMP & '" -D >"' & $f & '" 2>&1', "", @SW_HIDE)
 	Local $data = FileRead($f)
 	FileDelete($f)
 	Local $aLines = StringSplit($data, @LF)
