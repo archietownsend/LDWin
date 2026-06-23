@@ -1,8 +1,11 @@
 name: Build LDWin
 
 # Full Windows build pipeline, run from the Actions tab ("Run workflow"):
-#   1. Build a modern, Npcap/wpcap-linked tcpdump.exe from source (the old bundled
-#      Microolap build loaded its own driver, which Windows 11 Core Isolation blocks).
+#   1. Build a modern, Npcap-linked tcpdump.exe from the tcpdump sources against the
+#      Npcap SDK (which provides wpcap.lib + headers). The resulting tcpdump.exe loads
+#      the user's installed Npcap wpcap.dll at runtime - and Npcap's driver is
+#      compatible with Windows 11 "Core Isolation > Memory Integrity", which the old
+#      bundled Microolap build's private driver was not.
 #   2. Compile LDWin.au3 -> LDWin.exe with AutoIt's Aut2Exe (FileInstall embeds the
 #      freshly built tcpdump.exe).
 #   3. Optionally commit the rebuilt tcpdump.exe + LDWin.exe back to the branch.
@@ -20,66 +23,39 @@ permissions:
 
 env:
   NPCAP_SDK_URL: https://npcap.com/dist/npcap-sdk-1.13.zip
-  LIBPCAP_TAG: libpcap-1.10.5
   TCPDUMP_TAG: tcpdump-4.99.5
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       # ---- Step 1: build an Npcap-linked tcpdump.exe from source ----
-      - name: Install build tools (flex + bison)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # libpcap's packet-filter grammar needs flex and bison, which the runner
-          # does not ship. winflexbison3 provides win_flex.exe / win_bison.exe.
-          choco install winflexbison3 --yes --no-progress
-          if ($LASTEXITCODE -ne 0) { throw "winflexbison3 install failed ($LASTEXITCODE)" }
-          Write-Host "win_flex:  $((Get-Command win_flex).Source)"
-          Write-Host "win_bison: $((Get-Command win_bison).Source)"
-
       - name: Download Npcap SDK
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Invoke-WebRequest -Uri "$env:NPCAP_SDK_URL" -OutFile npcap-sdk.zip
           Expand-Archive -Path npcap-sdk.zip -DestinationPath C:\npcap-sdk -Force
-          Get-ChildItem C:\npcap-sdk
+          Get-ChildItem -Recurse C:\npcap-sdk | Select-Object FullName
 
-      - name: Clone libpcap and tcpdump
+      - name: Clone tcpdump
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          git clone --depth 1 --branch $env:LIBPCAP_TAG https://github.com/the-tcpdump-group/libpcap C:\src\libpcap
-          if ($LASTEXITCODE -ne 0) { throw "libpcap clone failed" }
           git clone --depth 1 --branch $env:TCPDUMP_TAG https://github.com/the-tcpdump-group/tcpdump C:\src\tcpdump
           if ($LASTEXITCODE -ne 0) { throw "tcpdump clone failed" }
 
-      - name: Build libpcap (static, against Npcap SDK)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          cmake -S C:\src\libpcap -B C:\src\libpcap\build -A Win32 `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DCMAKE_PREFIX_PATH="C:\npcap-sdk" -DPacket_ROOT="C:\npcap-sdk" `
-            -DCMAKE_INSTALL_PREFIX="C:\libpcap-install"
-          if ($LASTEXITCODE -ne 0) { throw "libpcap configure failed ($LASTEXITCODE)" }
-          cmake --build C:\src\libpcap\build --config Release --target install
-          if ($LASTEXITCODE -ne 0) { throw "libpcap build failed ($LASTEXITCODE)" }
-          Get-ChildItem -Recurse C:\libpcap-install | Select-Object FullName
-
-      - name: Build tcpdump (against the built libpcap)
+      - name: Build tcpdump (against the Npcap SDK)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           cmake -S C:\src\tcpdump -B C:\src\tcpdump\build -A Win32 `
-            -DCMAKE_PREFIX_PATH="C:\libpcap-install;C:\npcap-sdk" `
-            -DPCAP_ROOT="C:\libpcap-install" -DPacket_ROOT="C:\npcap-sdk"
+            -DCMAKE_PREFIX_PATH="C:\npcap-sdk" `
+            -DPCAP_ROOT="C:\npcap-sdk" -DPacket_ROOT="C:\npcap-sdk"
           if ($LASTEXITCODE -ne 0) { throw "tcpdump configure failed ($LASTEXITCODE)" }
           cmake --build C:\src\tcpdump\build --config Release
           if ($LASTEXITCODE -ne 0) { throw "tcpdump build failed ($LASTEXITCODE)" }
@@ -103,6 +79,7 @@ jobs:
       - name: Compile LDWin.au3 -> LDWin.exe
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $aut2exe = Get-ChildItem -Path "C:\Program Files (x86)\AutoIt3","C:\Program Files\AutoIt3" `
             -Recurse -Filter "Aut2exe*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $aut2exe) { throw "Aut2Exe not found after installing AutoIt3" }
