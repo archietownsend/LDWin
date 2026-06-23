@@ -30,10 +30,10 @@ If IsAdmin() = 0 Then
 	MsgBox(16, "Exiting", "This program requires Local Admistrator rights")
 	Exit
 EndIf
-; NOTE: the bundled tcpdump.exe MUST be a build linked against Npcap's wpcap.dll
-; (e.g. WinDump, or a tcpdump-for-Windows Npcap build). The old Microolap build that
-; shipped with LDWin <= 2.2 used its own kernel driver, which Windows 11 "Core Isolation
-; > Memory Integrity" blocks - replace it with an Npcap/wpcap-linked build before compiling.
+; NOTE: the bundled tcpdump.exe must be a build linked against Npcap's wpcap.dll, not the
+; old Microolap build (<= 2.2) that loaded its own HVCI-blocked driver. The GitHub Actions
+; workflow (.github/workflows/build.yml) builds such a tcpdump.exe against the Npcap SDK
+; and compiles this script automatically.
 FileInstall("tcpdump.exe", @TempDir & '\', 1)
 FileInstall("donate.ico", @TempDir & '\', 1)
 GUISetIcon("network.ico")
