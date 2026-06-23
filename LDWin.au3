@@ -31,6 +31,10 @@ If IsAdmin() = 0 Then
 	MsgBox(16, "Exiting", "This program requires Local Admistrator rights")
 	Exit
 EndIf
+; NOTE: the bundled tcpdump.exe MUST be a build linked against Npcap's wpcap.dll
+; (e.g. WinDump, or a tcpdump-for-Windows Npcap build). The old Microolap build that
+; shipped with LDWin <= 2.2 used its own kernel driver, which Windows 11 "Core Isolation
+; > Memory Integrity" blocks - replace it with an Npcap/wpcap-linked build before compiling.
 FileInstall("tcpdump.exe", @TempDir & '\', 1)
 FileInstall("donate.ico", @TempDir & '\', 1)
 GUISetIcon("network.ico")
@@ -47,11 +51,12 @@ $Output = ""
 $Nic_Friend = ""
 $Hardware = ""
 $IData = ""
-; Capture window (ms). CDP announces every 60s and LLDP every 30s by default,
-; so we listen a little over 60s to guarantee catching at least one announcement.
-$CAPTURE_WINDOW = 65000
 ; BPF expression matching LLDP (ethertype 0x88cc) and CDP (SNAP, 0x2000 @ offset 20).
 $BPF_FILTER = "(ether[12:2]==0x88cc or ether[20:2]==0x2000)"
+; Directory Npcap installs its libraries into. We prepend this to PATH when launching
+; tcpdump so its wpcap.dll is found even when Npcap is not in "WinPcap API-compatible"
+; mode (which would otherwise place the DLLs directly in System32).
+$NPCAP_DIR = @SystemDir & "\Npcap"
 SplashTextOn("Please Wait", "Enumerating Network Cards via WMI...", 300, 50)
 $objWMIService = ObjGet("winmgmts:\\" & $strComputer & "\root\CIMV2")
 $colItems = $objWMIService.ExecQuery("SELECT * FROM Win32_NetworkAdapter", "WQL", $wbemFlagReturnImmediately + $wbemFlagForwardOnly)
@@ -160,37 +165,50 @@ Func GetCDP($Nic_Friendly)
 	$ID = $IData[2][1]
 
 	;===== Packet capture ===============================================================
-	; Windows 11 "Core Isolation > Memory Integrity" (HVCI) blocks the legacy third-party
-	; kernel capture driver used by the bundled Microolap tcpdump build, so its live
-	; capture (-i) silently fails. When the in-box Windows Packet Monitor (pktmon) is
-	; available we capture with that instead - it uses a Microsoft-signed, in-box driver
-	; that is Core Isolation compatible - and use tcpdump only to decode the resulting
-	; capture file offline (reading a file with -r needs no capture driver at all).
+	; Capture uses Npcap. The legacy Microolap tcpdump build loaded its own kernel driver,
+	; which Windows 11 "Core Isolation > Memory Integrity" (HVCI) blocks - so live capture
+	; silently failed. Npcap's driver (npcap.sys) is EV/attestation signed and HVCI
+	; compatible, so it loads and captures with Core Isolation enabled. Npcap must be
+	; installed on the machine (see _NpcapInstalled / the README) and the bundled
+	; tcpdump.exe must be a build linked against Npcap's wpcap.dll.
 	FileDelete(@TempDir & "\Data_Out.txt")
-	If _PktmonAvailable() Then
-		CaptureWithPktmon()
-	Else
-		;******** Legacy live capture (pre-Win10 1809 / no pktmon) ********
-		$TCPDmpPID = Run(@ComSpec & " /c " & @TempDir & '\tcpdump.exe -i \Device\' & $ID & ' -nn -v -s 1500 -c 1 ' & $BPF_FILTER & ' >%temp%\Data_Out.txt', "", @SW_HIDE)
-		$Secs = 1
-		$Status1 = GUICtrlCreateLabel("Running ... May take up to 60 seconds between link announcements ...", 120, 343, 350, 20)
-		$iBegin = TimerInit()
-		Do
-			$msg = GUIGetMsg()
-			If $msg = $Cancel Then
-				ProcessClose("tcpdump.exe")
-				ExitLoop
-			EndIf
-			If Ceiling(TimerDiff($iBegin)) = ($Secs * 1000) Or Ceiling(TimerDiff($iBegin)) > ($Secs * 1000) Then
-				GUICtrlCreateLabel(Round($Secs, 0) & " Seconds elapsed", 240, 363, 100, 20)
-				$Secs = $Secs + 1
-			EndIf
-			$TCPDmpPID = ProcessExists($TCPDmpPID)
-		Until $TCPDmpPID = "0" Or TimerDiff($iBegin) > 60000
-		GUICtrlDelete($Status1)
-		GUICtrlCreateLabel("", 240, 360, 100, 20)
-		GUICtrlCreateLabel("", 210, 350, 200, 20)
+	If Not _NpcapInstalled() Then
+		GUICtrlSetState($Get, $GUI_ENABLE)
+		GUICtrlSetState($Save, $GUI_ENABLE)
+		GUICtrlSetState($Help, $GUI_ENABLE)
+		FileClose($SaveFile)
+		FileDelete(@TempDir & "\SaveData.txt")
+		MsgBox(48, "Npcap Required", _
+			"LDWin captures network traffic using Npcap, which does not appear to be installed." & @CRLF & @CRLF & _
+			"Download and install Npcap from https://npcap.com/ (the free installer is fine), then run " & _
+			"LDWin again." & @CRLF & @CRLF & _
+			"Npcap is compatible with Windows 11 'Core Isolation > Memory Integrity', so it does not " & _
+			"need to be disabled.")
+		Return
 	EndIf
+	; Npcap names interfaces \Device\NPF_{GUID}; $ID holds the adapter's {GUID} (SettingID).
+	; Prepend the Npcap directory to PATH so tcpdump finds Npcap's wpcap.dll.
+	$CaptureCmd = 'set "PATH=' & $NPCAP_DIR & ';%PATH%" && "' & @TempDir & '\tcpdump.exe" -i \Device\NPF_' & $ID & _
+			' -nn -v -s 1500 -c 1 "' & $BPF_FILTER & '" >"%TEMP%\Data_Out.txt" 2>nul'
+	$TCPDmpPID = Run(@ComSpec & " /c " & $CaptureCmd, "", @SW_HIDE)
+	$Secs = 1
+	$Status1 = GUICtrlCreateLabel("Running ... May take up to 60 seconds between link announcements ...", 120, 343, 350, 20)
+	$iBegin = TimerInit()
+	Do
+		$msg = GUIGetMsg()
+		If $msg = $Cancel Then
+			ProcessClose("tcpdump.exe")
+			ExitLoop
+		EndIf
+		If Ceiling(TimerDiff($iBegin)) = ($Secs * 1000) Or Ceiling(TimerDiff($iBegin)) > ($Secs * 1000) Then
+			GUICtrlCreateLabel(Round($Secs, 0) & " Seconds elapsed", 240, 363, 100, 20)
+			$Secs = $Secs + 1
+		EndIf
+		$TCPDmpPID = ProcessExists($TCPDmpPID)
+	Until $TCPDmpPID = "0" Or TimerDiff($iBegin) > 60000
+	GUICtrlDelete($Status1)
+	GUICtrlCreateLabel("", 240, 360, 100, 20)
+	GUICtrlCreateLabel("", 210, 350, 200, 20)
 	$file = FileOpen(@TempDir & "\Data_Out.txt")
 	$end = _FileCountLines(@TempDir & "\Data_Out.txt")
 	If $end > 0 Then
@@ -328,16 +346,6 @@ Func GetCDP($Nic_Friendly)
 		GUICtrlCreateLabel("NO LINK DATA FOUND ... !", 210, 348, 150, 20)
 		FileClose($SaveFile)
 		FileDelete(@TempDir & "\SaveData.txt")
-		; If we had to use the legacy capture driver and Memory Integrity is on, that
-		; driver was almost certainly blocked - point the user at the real cause.
-		If Not _PktmonAvailable() And _MemoryIntegrityEnabled() Then
-			MsgBox(48, "Core Isolation Enabled", _
-				"Windows 'Core Isolation > Memory Integrity' is enabled. This blocks the legacy " & _
-				"packet capture driver, so link data cannot be captured on this system." & @CRLF & @CRLF & _
-				"Resolve this by either disabling Memory Integrity (Windows Security > Device security > " & _
-				"Core isolation) or running LDWin on a build of Windows that includes the in-box Packet " & _
-				"Monitor (pktmon), which LDWin uses automatically when present.")
-		EndIf
 	EndIf
 	FileClose($SaveFile)
 	FileClose($file)
@@ -369,83 +377,24 @@ EndFunc   ;==>SaveData
 
 Func OnExit()
 	If ProcessExists("tcpdump.exe") Then ProcessClose("tcpdump.exe")
-	If _PktmonAvailable() Then RunWait(@ComSpec & " /c pktmon stop", "", @SW_HIDE)
 	FileClose($log)
 	FileDelete(@TempDir & "\LinkData.txt")
 	FileDelete(@TempDir & "\tcpdump.exe")
 	FileDelete(@TempDir & "\SaveData.txt")
 	FileDelete(@TempDir & "\donate.ico")
-	FileDelete(@TempDir & "\LDWin_cap.etl")
-	FileDelete(@TempDir & "\LDWin_cap.pcapng")
 EndFunc   ;==>OnExit
 
-; Returns True when the in-box Windows Packet Monitor (pktmon) is present.
-; pktmon ships with Windows 10 1809+ and all Windows 11 builds.
-Func _PktmonAvailable()
-	Return FileExists(@SystemDir & "\pktmon.exe")
-EndFunc   ;==>_PktmonAvailable
-
-; Returns True when Core Isolation > Memory Integrity (HVCI) is enabled.
-Func _MemoryIntegrityEnabled()
-	Local $v = RegRead("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity", "Enabled")
-	Return ($v = 1)
-EndFunc   ;==>_MemoryIntegrityEnabled
-
-; Capture CDP/LLDP using the in-box Windows Packet Monitor, then decode the capture
-; offline with the bundled tcpdump. This is the Core Isolation (HVCI) safe path: pktmon
-; uses a Microsoft-signed in-box driver, and tcpdump's offline read (-r) loads no driver.
-; Writes decoded output to @TempDir\Data_Out.txt so the existing parser is unchanged.
-Func CaptureWithPktmon()
-	Local $etl = @TempDir & "\LDWin_cap.etl"
-	Local $pcapng = @TempDir & "\LDWin_cap.pcapng"
-	FileDelete($etl)
-	FileDelete($pcapng)
-
-	; Limit capture to the well-known CDP / LLDP multicast destinations (filters are OR'd)
-	; so the trace stays small. tcpdump applies the precise ethertype filter when decoding.
-	RunWait(@ComSpec & " /c pktmon filter remove", "", @SW_HIDE)
-	RunWait(@ComSpec & " /c pktmon filter add LDWin_CDP --mac-address 01-00-0C-CC-CC-CC", "", @SW_HIDE)
-	RunWait(@ComSpec & " /c pktmon filter add LDWin_LLDP --mac-address 01-80-C2-00-00-0E", "", @SW_HIDE)
-
-	; --pkt-size 0 keeps full frames (default 128 bytes would truncate larger TLVs).
-	RunWait(@ComSpec & ' /c pktmon start --capture --pkt-size 0 --file-name "' & $etl & '"', "", @SW_HIDE)
-
-	Local $iBegin = TimerInit()
-	Local $Secs = 1
-	Local $cancelled = False
-	$Status1 = GUICtrlCreateLabel("Capturing via Windows Packet Monitor ... up to 65 seconds between link announcements ...", 120, 343, 400, 20)
-	Do
-		If GUIGetMsg() = $Cancel Then
-			$cancelled = True
-			ExitLoop
-		EndIf
-		If Ceiling(TimerDiff($iBegin)) >= ($Secs * 1000) Then
-			GUICtrlCreateLabel(Round($Secs, 0) & " Seconds elapsed", 240, 363, 100, 20)
-			$Secs = $Secs + 1
-		EndIf
-		Sleep(50)
-	Until TimerDiff($iBegin) > $CAPTURE_WINDOW
-
-	RunWait(@ComSpec & " /c pktmon stop", "", @SW_HIDE)
-	RunWait(@ComSpec & " /c pktmon filter remove", "", @SW_HIDE)
-	GUICtrlDelete($Status1)
-	GUICtrlCreateLabel("", 240, 360, 100, 20)
-	GUICtrlCreateLabel("", 210, 350, 200, 20)
-
-	If $cancelled Then
-		FileDelete($etl)
-		Return
-	EndIf
-
-	; Convert the ETL trace to pcapng, then decode it offline with the bundled tcpdump.
-	RunWait(@ComSpec & ' /c pktmon pcapng "' & $etl & '" -o "' & $pcapng & '"', "", @SW_HIDE)
-	If FileExists($pcapng) Then
-		RunWait(@ComSpec & ' /c ' & @TempDir & '\tcpdump.exe -nn -v -s 1500 -r "' & $pcapng & '" "' & $BPF_FILTER & '" >"' & @TempDir & '\Data_Out.txt" 2>nul', "", @SW_HIDE)
-	EndIf
-
-	FileDelete($etl)
-	FileDelete($pcapng)
-EndFunc   ;==>CaptureWithPktmon
+; Returns True when Npcap appears to be installed. Npcap is the maintained, HVCI /
+; "Core Isolation > Memory Integrity" compatible successor to WinPcap; its capture
+; driver loads with Core Isolation enabled. wpcap.dll lives in System32\Npcap, and
+; additionally in System32 when Npcap is installed in "WinPcap API-compatible Mode".
+Func _NpcapInstalled()
+	If FileExists($NPCAP_DIR & "\wpcap.dll") Then Return True
+	If FileExists(@SystemDir & "\wpcap.dll") Then Return True
+	; Fall back to the driver service registration in case the DLLs moved.
+	If RegRead("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\npcap", "Start") <> "" Then Return True
+	Return False
+EndFunc   ;==>_NpcapInstalled
 
 Func Help()
 	$LDWinHelp = GUICreate("Link Discovery for Windows : Help", 550, 570, (@DesktopWidth - 550) / 2, (@DesktopHeight - 570) / 2)

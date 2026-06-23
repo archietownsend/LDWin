@@ -38,7 +38,14 @@ There must be a better way to tell where a network cable goes to without having 
 NOTE: A valid TCP/IP address is not required to receive valid link information.
 
 ### Windows 11 / Core Isolation
-On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature blocks the legacy third-party packet-capture driver that older versions of LDWin relied on, which caused capture to silently fail. From v2.3, LDWin captures using the in-box Windows Packet Monitor (`pktmon`) when it is available - this uses a Microsoft-signed, in-box driver that is compatible with Core Isolation, and requires no additional software to be installed. The bundled `tcpdump` is now used only to decode the capture offline. On older versions of Windows without `pktmon`, LDWin falls back to the original live-capture method.
+On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature blocks the old WinPcap-era capture driver that earlier versions of LDWin relied on, which caused capture to silently fail. From v2.3, LDWin captures using [Npcap], the maintained successor to WinPcap. Npcap's driver is signed for and compatible with Core Isolation, so **Core Isolation does not need to be disabled**.
+
+**Requirement:** [Npcap] must be installed (the free installer from https://npcap.com/ is fine). If it is not installed, LDWin will tell you and link you to the download. LDWin finds Npcap's libraries automatically; installing in "WinPcap API-compatible Mode" is optional.
+
+> **Building from source:** the `tcpdump.exe` bundled with LDWin must be a build linked against Npcap's `wpcap.dll` (for example [WinDump], or a tcpdump-for-Windows Npcap build). The old self-contained Microolap build shipped with LDWin &le; 2.2 will not work, because it loads its own HVCI-blocked driver.
+
+[Npcap]: https://npcap.com/
+[WinDump]: https://www.winpcap.org/windump/
 
 ### What's New?
 ***See the [changelog] for what's new in the most recent release.***
