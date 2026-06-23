@@ -37,6 +37,9 @@ There must be a better way to tell where a network cable goes to without having 
 
 NOTE: A valid TCP/IP address is not required to receive valid link information.
 
+### Windows 11 / Core Isolation
+On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature blocks the legacy third-party packet-capture driver that older versions of LDWin relied on, which caused capture to silently fail. From v2.3, LDWin captures using the in-box Windows Packet Monitor (`pktmon`) when it is available - this uses a Microsoft-signed, in-box driver that is compatible with Core Isolation, and requires no additional software to be installed. The bundled `tcpdump` is now used only to decode the capture offline. On older versions of Windows without `pktmon`, LDWin falls back to the original live-capture method.
+
 ### What's New?
 ***See the [changelog] for what's new in the most recent release.***
 
