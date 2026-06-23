@@ -42,10 +42,15 @@ On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature b
 
 **Requirement:** [Npcap] must be installed (the free installer from https://npcap.com/ is fine). If it is not installed, LDWin will tell you and link you to the download. LDWin finds Npcap's libraries automatically; installing in "WinPcap API-compatible Mode" is optional.
 
-> **Building from source:** the `tcpdump.exe` bundled with LDWin must be a build linked against Npcap's `wpcap.dll` (for example [WinDump], or a tcpdump-for-Windows Npcap build). The old self-contained Microolap build shipped with LDWin &le; 2.2 will not work, because it loads its own HVCI-blocked driver.
+> **Building from source:** both binaries are built automatically on Windows by the
+> [`Build LDWin`](.github/workflows/build.yml) GitHub Actions workflow — run it from the
+> repository's **Actions** tab ("Run workflow"). It builds `tcpdump.exe` from the tcpdump
+> sources against the [Npcap] SDK (so it links Npcap's `wpcap.dll`) and compiles `LDWin.exe`
+> with AutoIt's Aut2Exe, then commits the rebuilt binaries back. The old self-contained
+> Microolap `tcpdump.exe` shipped with LDWin &le; 2.2 will not work, because it loads its
+> own HVCI-blocked driver.
 
 [Npcap]: https://npcap.com/
-[WinDump]: https://www.winpcap.org/windump/
 
 ### What's New?
 ***See the [changelog] for what's new in the most recent release.***
