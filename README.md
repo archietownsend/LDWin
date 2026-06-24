@@ -21,24 +21,9 @@ Core Isolation — so **Core Isolation does not need to be disabled**.
 + [CDP] — Cisco Discovery Protocol
 + [LLDP] — Link Layer Discovery Protocol
 
----
-
-## Two editions
-
-This repository contains two builds of LDWin. Both require [Npcap] and work with Core
-Isolation enabled; pick whichever you prefer.
-
-| | **LDWin .NET** (recommended) | **LDWin (AutoIt)** |
-|---|---|---|
-| Source | `dotnet/` (C# / .NET 8, WinForms) | `LDWin.au3` (AutoIt) |
-| Packet capture | In-process via SharpPcap/Npcap | Shells out to `tcpdump.exe` |
-| Files to ship | Single `LDWin.exe` | `LDWin.exe` **+** `tcpdump.exe` (keep together) |
-| Build workflow | `Build LDWin (.NET)` | `Build LDWin` |
-
-The **.NET** edition decodes CDP/LLDP itself, so there is no bundled `tcpdump.exe`, no
-temp-file extraction, and nothing to keep alongside the exe — which also means fewer
-antivirus false positives. New work targets this edition; the AutoIt build is kept for
-continuity.
+LDWin is written in C# (.NET 8, WinForms) and captures + decodes CDP/LLDP **in process**
+via [Npcap]. There is no bundled `tcpdump.exe`, no temp-file extraction, and nothing to
+keep alongside the program — it ships as a single self-contained `LDWin.exe`.
 
 ---
 
@@ -49,10 +34,7 @@ continuity.
   detects whether it is present and points you to the download if it is missing.
   Installing in "WinPcap API-compatible Mode" is optional; LDWin finds Npcap's libraries
   automatically.
-- **Administrative rights** — packet capture requires elevation (both editions request it).
-
-> **AutoIt edition only:** `LDWin.exe` runs `tcpdump.exe` from its own folder, so the two
-> must stay in the same directory. The .NET edition has no such requirement.
+- **Administrative rights** — packet capture requires elevation (LDWin requests it).
 
 ## How to use
 
@@ -67,27 +49,36 @@ A valid TCP/IP address is not required to receive link information.
 
 ## A note on antivirus / Windows Defender
 
-Because LDWin captures network traffic and (in the AutoIt edition) ships a packet-capture
-tool, Windows Defender may false-flag it. **It is not malware.** Mitigations already in place:
-
-- The .NET edition captures in-process — it never drops or executes a separate sniffer binary.
-- The AutoIt edition runs `tcpdump.exe` from its own folder rather than extracting it to `%TEMP%`.
-- Builds are uncompressed and carry proper version/publisher metadata.
-
-If you still hit a block, the most reliable fix is to
+Because LDWin captures network traffic, Windows Defender may occasionally false-flag it.
+**It is not malware.** It captures in process and never drops or executes a separate
+sniffer binary, and builds carry proper version/publisher metadata. If you still hit a
+block, the most reliable fix is to
 [submit the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission).
 On your own machine you can allow it via **Windows Security → Protection history**.
 
 ## Building from source
 
-Both editions build on Windows via GitHub Actions — run them from the repository's
-**Actions** tab ("Run workflow"). Neither requires a local toolchain.
+LDWin builds on Windows via GitHub Actions — run [`Build LDWin (.NET)`](.github/workflows/build-dotnet.yml)
+from the repository's **Actions** tab ("Run workflow") to produce a single self-contained
+`LDWin.exe`. Locally:
 
-- **LDWin .NET** — [`Build LDWin (.NET)`](.github/workflows/build-dotnet.yml) runs
-  `dotnet publish` to produce a single self-contained `LDWin.exe`.
-  Locally: `dotnet publish dotnet/LDWin/LDWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`
-- **LDWin (AutoIt)** — [`Build LDWin`](.github/workflows/build.yml) builds an
-  Npcap-linked `tcpdump.exe` from source and compiles `LDWin.au3` with AutoIt's Aut2Exe.
+```
+dotnet publish dotnet/LDWin/LDWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+The CDP/LLDP decoders are unit-tested ([`Test`](.github/workflows/test.yml) workflow):
+
+```
+dotnet test dotnet/LDWin.Tests/LDWin.Tests.csproj
+```
+
+### Project layout
+
+| Project | Target | Purpose |
+|---|---|---|
+| `dotnet/LDWin.Core` | `net8.0` | Capture engine + CDP/LLDP decoders (no UI; unit-testable) |
+| `dotnet/LDWin` | `net8.0-windows` | WinForms GUI; published as the single-file exe |
+| `dotnet/LDWin.Tests` | `net8.0` | xUnit decoder tests |
 
 ## What's new?
 

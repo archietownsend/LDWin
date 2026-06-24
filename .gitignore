@@ -1,0 +1,9 @@
+# .NET build output
+bin/
+obj/
+publish/
+dist/
+
+# IDE / user files
+.vs/
+*.user

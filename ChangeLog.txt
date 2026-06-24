@@ -1,3 +1,19 @@
+Release 3.0 - 24 Jun 2026
+-------------------------
+* Rewritten in C# / .NET 8 (WinForms). CDP and LLDP are now captured and decoded
+  in-process via SharpPcap/Npcap - there is no bundled tcpdump.exe to ship or keep
+  alongside the program, and nothing is extracted to %TEMP%
+* Ships as a single self-contained LDWin.exe
+* Solution split into LDWin.Core (capture + decoders, net8.0, no UI), LDWin (WinForms
+  GUI), and LDWin.Tests (xUnit unit tests for the CDP/LLDP decoders)
+* Decoder unit tests run on every push/PR via the Test workflow
+* The legacy AutoIt implementation (LDWin.au3) and its tcpdump-based build have been
+  removed; see release 2.3 and earlier for that history
+* Carried over from the 2.x Windows 11 work: capture works with "Core Isolation >
+  Memory Integrity" (HVCI) enabled, since Npcap's driver is signed for and compatible
+  with Core Isolation (it does not need to be disabled)
+
+
 Release 2.3 - 23 Jun 2026
 -------------------------
 * Windows 11 compatibility: link discovery now works with "Core Isolation >

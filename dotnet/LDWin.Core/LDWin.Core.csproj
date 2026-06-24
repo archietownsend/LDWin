@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LDWin</RootNamespace>
+    <AssemblyName>LDWin.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SharpPcap talks to the user's installed Npcap (wpcap.dll) directly, so there is
+         no bundled tcpdump.exe and the HVCI-compatible Npcap driver is used as before.
+         The CDP/LLDP decoders hand-parse the raw frames, so PacketDotNet is not needed. -->
+    <PackageReference Include="SharpPcap" Version="6.3.0" />
+  </ItemGroup>
+
+</Project>
