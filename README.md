@@ -48,8 +48,6 @@ Because LDWin is an unsigned AutoIt program that ships a packet-capture tool (`t
 
 The most reliable fix remains [submitting the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission). On your own machine you can also allow it via **Windows Security → Protection history**.
 
-Optional code-signing (see below) will stop Defender from flagging a signed binary.
-
 ### Building from Source
 
 Both binaries are built automatically on Windows by the [`Build LDWin`](.github/workflows/build.yml) GitHub Actions workflow — run it from the repository's **Actions** tab ("Run workflow").
@@ -57,16 +55,7 @@ Both binaries are built automatically on Windows by the [`Build LDWin`](.github/
 The workflow:
 1. Builds `tcpdump.exe` from source against the [Npcap] SDK (so it loads Npcap's `wpcap.dll` at runtime)
 2. Compiles `LDWin.exe` with AutoIt's Aut2Exe
-3. Optionally code-signs both binaries
-4. Optionally commits the rebuilt binaries back to the branch
-
-**Code-signing (recommended):** To sign the binaries, add two repository secrets and the workflow will `signtool sign` both executables:
-
-- `CODE_SIGN_PFX_BASE64` — your code-signing certificate (`.pfx`), base64-encoded  
-  (e.g. `certutil -encode cert.pfx cert.b64`)
-- `CODE_SIGN_PASSWORD` — the `.pfx` password
-
-Without these secrets the build still succeeds but the binaries are left unsigned.
+3. Commits the rebuilt binaries back to the branch
 
 ### What's New?
 ***See the [changelog] for what's new in the most recent release.***
