@@ -1,86 +1,74 @@
 LDWin
 =====
 
-## Link Discovery Client for Windows
-Chris Hall 2010-2014 - [chall32.blogspot.com]
+## Link Discovery Client for Windows — Windows 11 Compatible Fork
+
+This is an updated fork of LDWin that works on Windows 11 with **Core Isolation > Memory Integrity** (HVCI) enabled. The original WinPcap-era capture driver is blocked by HVCI; this version replaces it with [Npcap], whose driver is signed and fully compatible with Core Isolation.
 
 <p align="center"> 
 <img src="https://github.com/chall32/LDWin/blob/master/LDWin.png?raw=true" alt="LDWin is a Link Discovery Protocol Client for Windows"/>
 </p>
 
 ### What is Link Discovery?
-Link discovery is the process of ascertaining information from directly connected networking devices, such as network switches.  This can be helpful when diagnosing suspected network connectivity issues.
+Link discovery lets you find out what network switch port (and switch name) a cable is plugged into by listening for announcements from the directly connected switch. Useful when tracing cables or diagnosing connectivity.
 
-LDWin supports the following methods of link discovery:
+LDWin supports:
 
 +   [CDP] - Cisco Discovery Protocol
 +   [LLDP] - Link Layer Discovery Protocol
 
-LDWin is based on [WinCDP] also by Chris Hall
+### Requirements
 
-### Why?
-Lets face it.  We have all been there: "where does this network cable / uplink / port go?"
+- **Windows 10 / 11** (including with Core Isolation / HVCI enabled)
+- **[Npcap]** must be installed — the free installer from https://npcap.com/ is fine. LDWin will tell you if it isn't found.
+- **Keep `LDWin.exe` and `tcpdump.exe` in the same folder.** LDWin runs `tcpdump.exe` from its own directory. LDWin will prompt you if `tcpdump.exe` is missing.
 
-Until now, it has been a matter of looking up cable numbers in databases, fiddling about in the back of server and network racks or worst case - manually tracing cables down the backs of server racks, under the computer room or office floor, in overhead cable trays etc etc...
-
-There must be a better way to tell where a network cable goes to without having to go to all that trouble every time.  VMware ESXi has Link discovery built in. Why not also have link discovery in Windows?
+Installing Npcap in "WinPcap API-compatible Mode" is optional — LDWin finds Npcap's libraries automatically.
 
 ### How to Use
-**You must have administrative rights to run this program**
 
-1.   Start the program
-2.   From the "Network Connection:" drop down, select the network adaptor over which you wish to obtain network link information
-3.   Click "Get Link Data"
-4.   LDWin will then listen on the selected network adaptor for link protocol announcements.  It may take up to 60 seconds to receive an announcement
-5.   Once an announcement has been received, the received information will be displayed in the results section
-6.   Use the "Save Link Data" button to save the received information into a text file
+**You must have administrative rights to run this program.**
 
-NOTE: A valid TCP/IP address is not required to receive valid link information.
+1. Start the program
+2. From the **Network Connection:** drop-down, select the network adapter you want to listen on
+3. Click **Get Link Data**
+4. LDWin listens for link protocol announcements — it may take up to 60 seconds to receive one
+5. Once an announcement arrives the information is displayed in the results panel
+6. Use **Save Link Data** to save the results to a text file
 
-### Windows 11 / Core Isolation
-On Windows 11, the "Core Isolation > Memory Integrity" (HVCI) security feature blocks the old WinPcap-era capture driver that earlier versions of LDWin relied on, which caused capture to silently fail. From v2.3, LDWin captures using [Npcap], the maintained successor to WinPcap. Npcap's driver is signed for and compatible with Core Isolation, so **Core Isolation does not need to be disabled**.
-
-**Requirement:** [Npcap] must be installed (the free installer from https://npcap.com/ is fine). If it is not installed, LDWin will tell you and link you to the download. LDWin finds Npcap's libraries automatically; installing in "WinPcap API-compatible Mode" is optional.
-
-**Keep the files together:** `LDWin.exe` runs `tcpdump.exe` from its own folder, so the two must stay in the same directory (download the release bundle, not just `LDWin.exe`). LDWin will prompt you if `tcpdump.exe` is missing.
+A valid TCP/IP address is not required to receive link information.
 
 ### A note on antivirus / Windows Defender
-Because LDWin is an (unsigned) AutoIt program that ships a packet-capture tool (`tcpdump`), Windows Defender may false-flag it ("contains a virus or potentially unwanted software"). It is not malware. To reduce this LDWin no longer extracts/executes `tcpdump.exe` from `%TEMP%` (it runs it in place) and the build stamps proper version/publisher metadata, but the most reliable fixes are: (1) [submit the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission), and/or (2) code-sign it (see below). On your own machine you can also allow it in **Windows Security → Protection history**.
 
-> **Building from source:** both binaries are built automatically on Windows by the
-> [`Build LDWin`](.github/workflows/build.yml) GitHub Actions workflow — run it from the
-> repository's **Actions** tab ("Run workflow"). It builds `tcpdump.exe` from the tcpdump
-> sources against the [Npcap] SDK (so it links Npcap's `wpcap.dll`) and compiles `LDWin.exe`
-> with AutoIt's Aut2Exe, then commits the rebuilt binaries back. The old self-contained
-> Microolap `tcpdump.exe` shipped with LDWin &le; 2.2 will not work, because it loads its
-> own HVCI-blocked driver.
->
-> **Code-signing (recommended):** unsigned AutoIt binaries that bundle a packet sniffer are
-> frequently false-flagged by Windows Defender ("contains a virus or potentially unwanted
-> software"). To sign the binaries during the build, add two repository secrets and the
-> workflow will `signtool sign` both `tcpdump.exe` and `LDWin.exe`:
->
-> - `CODE_SIGN_PFX_BASE64` — your code-signing certificate (`.pfx`), base64-encoded
->   (e.g. `certutil -encode cert.pfx cert.b64`, or `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))`).
-> - `CODE_SIGN_PASSWORD` — the `.pfx` password.
->
-> Without these secrets the build still succeeds but the binaries are left unsigned.
+Because LDWin is an unsigned AutoIt program that ships a packet-capture tool (`tcpdump`), Windows Defender may false-flag it. It is not malware. Steps taken to reduce this:
 
-[Npcap]: https://npcap.com/
+- `tcpdump.exe` is run directly from the program folder — it is never dropped into `%TEMP%`
+- The build does not compress the executable (compressed payloads look like packers to AV)
+- Proper version/publisher metadata is stamped onto both binaries at build time
+
+The most reliable fix remains [submitting the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission). On your own machine you can also allow it via **Windows Security → Protection history**.
+
+### Building from Source
+
+Both binaries are built automatically on Windows by the [`Build LDWin`](.github/workflows/build.yml) GitHub Actions workflow — run it from the repository's **Actions** tab ("Run workflow").
+
+The workflow:
+1. Builds `tcpdump.exe` from source against the [Npcap] SDK (so it loads Npcap's `wpcap.dll` at runtime)
+2. Compiles `LDWin.exe` with AutoIt's Aut2Exe
+3. Commits the rebuilt binaries back to the branch
 
 ### What's New?
 ***See the [changelog] for what's new in the most recent release.***
 
+---
 
-### [Click here to download latest version](https://github.com/chall32/LDWin/blob/master/LDWin.exe?raw=true)
+### Credits
 
-If LDWin helped you, how about buying me a beer? Use the donate button below. THANK YOU!
+LDWin was originally created by **Chris Hall** (2010–2014).  
+Original project: [github.com/chall32/LDWin](https://github.com/chall32/LDWin) · Blog: [chall32.blogspot.com]
 
-[![Donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=KT462HRW7XQ3J)
-
-
-[changelog]: https://github.com/chall32/LDWin/blob/master/ChangeLog.txt
+[Npcap]: https://npcap.com/
+[changelog]: ChangeLog.txt
 [chall32.blogspot.com]: http://chall32.blogspot.com
-[CDP]:http://en.wikipedia.org/wiki/Cisco_Discovery_Protocol
-[LLDP]:http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol
-[WinCDP]:http://github.com/chall32/WinCDP
+[CDP]: http://en.wikipedia.org/wiki/Cisco_Discovery_Protocol
+[LLDP]: http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol
