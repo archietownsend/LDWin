@@ -13,7 +13,7 @@ this version captures through [Npcap], whose driver is signed for and compatible
 Core Isolation — so **Core Isolation does not need to be disabled**.
 
 <p align="center">
-<img src="LDWin.png" alt="LDWin is a Link Discovery Protocol Client for Windows"/>
+<img src="LDWin.png" width="560" alt="LDWin - Link Discovery for Windows"/>
 </p>
 
 ### Supported protocols
