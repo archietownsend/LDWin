@@ -183,6 +183,9 @@ public sealed class CaptureService : ICaptureService
 
         return null;
     }
+
+    /// <inheritdoc />
+    public LinkData? Capture(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(adapter);
 
