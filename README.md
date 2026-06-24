@@ -61,30 +61,7 @@ A valid TCP/IP address is not required to receive link information.
 
 Because LDWin captures network traffic, Windows Defender may occasionally false-flag it.
 **It is not malware.** It captures in process and never drops or executes a separate
-sniffer binary, and builds carry proper version/publisher metadata. If you still hit a
-block, the most reliable fix is to
-[submit the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission).
-On your own machine you can allow it via **Windows Security → Protection history**.
-
-## Building from source
-
-LDWin builds on Windows via GitHub Actions — run [`Build LDWin (.NET)`](.github/workflows/build-dotnet.yml)
-from the repository's **Actions** tab ("Run workflow") to produce a single self-contained
-`LDWin.exe`. Locally:
-
-```
-dotnet publish dotnet/LDWin/LDWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-```
-
-The CDP/LLDP decoders are unit-tested ([`Test`](.github/workflows/test.yml) workflow):
-
-```
-dotnet test dotnet/LDWin.Tests/LDWin.Tests.csproj
-```
-
-Releases are published by the [`Release`](.github/workflows/release.yml) workflow: push a
-tag (`git tag v3.0.0 && git push origin v3.0.0`) or run it manually with a tag, and it
-builds the self-contained exe and attaches it to a GitHub Release.
+sniffer binary, and builds carry proper version/publisher metadata.
 
 ### Project layout
 
