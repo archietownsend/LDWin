@@ -141,11 +141,6 @@ public sealed class MainForm : Form
             "https://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol",
             new Point(110, 490));
 
-        var blogLink = CreateLinkLabel(
-            "chall32.blogspot.com",
-            "http://chall32.blogspot.com",
-            new Point(220, 490));
-
         Controls.Add(connectionLabel);
         Controls.Add(_adapterCombo);
         Controls.Add(_getButton);
@@ -156,7 +151,6 @@ public sealed class MainForm : Form
         Controls.Add(_resultsBox);
         Controls.Add(cdpLink);
         Controls.Add(lldpLink);
-        Controls.Add(blogLink);
 
         Load += OnFormLoad;
     }
