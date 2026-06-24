@@ -1,0 +1,67 @@
+name: Build LDWin (.NET)
+
+# Builds the C# / WinForms rewrite of LDWin. Unlike the AutoIt build, this
+# produces a single self-contained LDWin.exe that captures and decodes CDP/LLDP
+# in-process via SharpPcap/Npcap - there is no bundled tcpdump.exe.
+#
+# Run from the Actions tab ("Run workflow").
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_exe:
+        description: "Commit the published LDWin.exe back to this branch"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore dotnet/LDWin/LDWin.csproj
+
+      - name: Publish (self-contained single-file win-x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish dotnet/LDWin/LDWin.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o publish
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
+          if (-not (Test-Path "publish\LDWin.exe")) { throw "LDWin.exe was not produced" }
+          Write-Host "Built publish\LDWin.exe ($((Get-Item 'publish\LDWin.exe').Length) bytes)"
+
+      - name: Upload LDWin.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LDWin-dotnet
+          path: publish/LDWin.exe
+          if-no-files-found: error
+
+      - name: Commit published binary
+        if: inputs.commit_exe
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item publish\LDWin.exe dist\LDWin.exe -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/LDWin.exe
+          $changed = (git status --porcelain dist/LDWin.exe)
+          if (-not $changed) { Write-Host "Binary unchanged - nothing to commit"; exit 0 }
+          git commit -m "CI: publish .NET LDWin.exe [skip ci]"
+          git push
