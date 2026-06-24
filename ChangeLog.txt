@@ -1,3 +1,13 @@
+Release 3.0.1 - 24 Jun 2026
+---------------------------
+* GUI: added Copy-to-clipboard, a raw-TLV view of everything the switch advertised,
+  remembers the last selected adapter, and a "keep listening until found" retry loop
+  with a Stop button
+* Shows the detected Npcap version in the window title
+* Smaller download: the single-file exe now compresses its bundled runtime
+* Added a LICENSE (MIT) and unit tests covering the raw-TLV decoding
+
+
 Release 3.0 - 24 Jun 2026
 -------------------------
 * Rewritten in C# / .NET 8 (WinForms). CDP and LLDP are now captured and decoded
