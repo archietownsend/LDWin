@@ -1,3 +1,11 @@
+Release 3.0.2 - 24 Jun 2026
+---------------------------
+* Distribution change to reduce antivirus false positives: releases now ship a zipped
+  self-contained folder (LDWin-win-x64.zip with LDWin.exe + its DLLs) instead of a
+  compressed single-file exe, avoiding the self-extraction-to-%TEMP% pattern that some
+  AV heuristics flag. Extract the zip and run LDWin.exe. No functional changes.
+
+
 Release 3.0.1 - 24 Jun 2026
 ---------------------------
 * GUI: added Copy-to-clipboard, a raw-TLV view of everything the switch advertised,
