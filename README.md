@@ -7,10 +7,8 @@ LDWin tells you **which switch and switch port a network cable is plugged into**
 listening for the link-discovery announcements (CDP / LLDP) that the directly-connected
 switch broadcasts. No more tracing cables under floors or guessing at patch panels.
 
-This is an updated fork that works on **Windows 11 with Core Isolation > Memory
-Integrity (HVCI) enabled**. The original WinPcap-era capture driver is blocked by HVCI;
-this version captures through [Npcap], whose driver is signed for and compatible with
-Core Isolation — so **Core Isolation does not need to be disabled**.
+This is an updated fork that works on Windows 11 with Core Isolation > Memory
+Integrity (HVCI) enabled and rewritten in C# and uses Npcap.
 
 <p align="center">
 <img src="LDWin.png" width="560" alt="LDWin - Link Discovery for Windows"/>
@@ -21,15 +19,9 @@ Core Isolation — so **Core Isolation does not need to be disabled**.
 + [CDP] — Cisco Discovery Protocol
 + [LLDP] — Link Layer Discovery Protocol
 
-LDWin is written in C# (.NET 8, WinForms) and captures + decodes CDP/LLDP **in process**
-via [Npcap]. There is no bundled `tcpdump.exe`, no temp-file extraction, and nothing to
-keep alongside the program — it ships as a single self-contained `LDWin.exe`.
-
----
-
 ## Requirements
 
-- **Windows 10 / 11** (including with Core Isolation / HVCI enabled)
+- **Windows 10 / 11**
 - **[Npcap]** installed — the free installer from <https://npcap.com/> is fine. LDWin
   detects whether it is present and points you to the download if it is missing.
   Installing in "WinPcap API-compatible Mode" is optional; LDWin finds Npcap's libraries
@@ -63,27 +55,10 @@ Because LDWin captures network traffic, Windows Defender may occasionally false-
 **It is not malware.** It captures in process and never drops or executes a separate
 sniffer binary, and builds carry proper version/publisher metadata.
 
-### Project layout
-
-| Project | Target | Purpose |
-|---|---|---|
-| `dotnet/LDWin.Core` | `net8.0` | Capture engine + CDP/LLDP decoders (no UI; unit-testable) |
-| `dotnet/LDWin` | `net8.0-windows` | WinForms GUI; published as the single-file exe |
-| `dotnet/LDWin.Tests` | `net8.0` | xUnit decoder tests |
-
-## What's new?
-
-See the [changelog] for the most recent changes.
-
----
-
 ### Credits
 
-LDWin was originally created by **Chris Hall** (2010–2014) and is based on his
-[WinCDP] project. Original repository: <https://github.com/chall32/LDWin>
+LDWin was originally created by **Chris Hall** (2010–2014). Original repository: <https://github.com/chall32/LDWin>
 
 [Npcap]: https://npcap.com/
-[changelog]: ChangeLog.txt
 [CDP]: http://en.wikipedia.org/wiki/Cisco_Discovery_Protocol
 [LLDP]: http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol
-[WinCDP]: http://github.com/chall32/WinCDP
