@@ -1,3 +1,15 @@
+Release 3.0.4 - 24 Jun 2026
+---------------------------
+* Show all neighbours: LDWin now listens for the full 60-second capture window
+  and collects every distinct CDP/LLDP neighbour that announces itself on the
+  link (deduplicated by protocol + device + port). Each neighbour is displayed
+  with a "Neighbour 1 (CDP) — Switch-A", "Neighbour 2 (LLDP) — Switch-B" header
+  so it is clear which announcement came from which device.
+* Status bar now summarises the number of neighbours found ("Found N neighbours.")
+* LLDP 802.1 VLAN Name / Port VLAN ID, CDP VTP domain and Duplex TLVs are now
+  decoded and displayed in both the main report and the raw-TLV view.
+
+
 Release 3.0.3 - 24 Jun 2026
 ---------------------------
 * Network Connection drop-down now lists only active interfaces (Windows reports them

@@ -283,6 +283,102 @@ public sealed class CaptureService : ICaptureService
         }
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<LinkData> CaptureAll(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(adapter);
+
+        var device = FindDevice(adapter.Name)
+            ?? throw new InvalidOperationException(
+                $"Capture adapter '{adapter.Name}' was not found. It may have been removed " +
+                "or Npcap may not be installed.");
+
+        var deadline = Stopwatch.StartNew();
+        var results = new List<LinkData>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        bool opened = false;
+
+        try
+        {
+            device.Open(new DeviceConfiguration
+            {
+                Mode = DeviceModes.Promiscuous,
+                ReadTimeout = ReadTimeoutMs,
+            });
+            opened = true;
+
+            device.Filter = CdpLldpFilter;
+
+            while (deadline.Elapsed < timeout)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var status = device.GetNextPacket(out PacketCapture e);
+
+                if (status != GetPacketStatus.PacketRead)
+                {
+                    continue;
+                }
+
+                byte[] frame;
+                try
+                {
+                    frame = e.GetPacket().Data;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (frame is not { Length: > 0 })
+                {
+                    continue;
+                }
+
+                foreach (var decoder in _decoders)
+                {
+                    LinkData? data;
+                    try
+                    {
+                        if (!decoder.TryDecode(frame, out data) || data is null)
+                        {
+                            continue;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    string key = $"{data.Protocol}|{data.DeviceId}|{data.PortId}";
+                    if (seen.Add(key))
+                    {
+                        PopulateLocalFields(data, adapter);
+                        results.Add(data);
+                    }
+
+                    break; // Frame matched - no need to try remaining decoders.
+                }
+            }
+
+            return results;
+        }
+        finally
+        {
+            if (opened)
+            {
+                try
+                {
+                    device.Close();
+                }
+                catch
+                {
+                    // Best-effort close; nothing actionable on failure.
+                }
+            }
+        }
+    }
+
     private static void PopulateLocalFields(LinkData data, AdapterInfo adapter)
     {
         data.AdapterName = adapter.Name;
