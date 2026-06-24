@@ -89,6 +89,9 @@ public sealed class LldpDecoder : ILinkDecoder
                         {
                             link.DeviceId = DecodeIdField(frame, valueOffset, length);
                         }
+                        // Always record the raw chassis value, even if System Name overrides DeviceId.
+                        string chassisValue = length >= 1 ? DecodeIdField(frame, valueOffset, length) : string.Empty;
+                        link.RawTlvs.Add($"Chassis ID: {chassisValue}");
                         break;
 
                     case TlvPortId:
@@ -96,6 +99,7 @@ public sealed class LldpDecoder : ILinkDecoder
                         {
                             link.PortId = DecodeIdField(frame, valueOffset, length);
                         }
+                        link.RawTlvs.Add($"Port ID: {link.PortId}");
                         break;
 
                     case TlvTtl:
@@ -103,13 +107,16 @@ public sealed class LldpDecoder : ILinkDecoder
                         {
                             link.TimeToLive = (frame[valueOffset] << 8) | frame[valueOffset + 1];
                         }
+                        link.RawTlvs.Add($"TTL: {link.TimeToLive}");
                         break;
 
                     case TlvPortDescription:
+                        string portDesc = length > 0 ? DecodeString(frame, valueOffset, length) : string.Empty;
                         if (string.IsNullOrEmpty(link.PortId) && length > 0)
                         {
-                            link.PortId = DecodeString(frame, valueOffset, length);
+                            link.PortId = portDesc;
                         }
+                        link.RawTlvs.Add($"Port Description: {portDesc}");
                         break;
 
                     case TlvSystemName:
@@ -118,6 +125,7 @@ public sealed class LldpDecoder : ILinkDecoder
                             link.DeviceId = DecodeString(frame, valueOffset, length);
                             deviceIdFromSystemName = true;
                         }
+                        link.RawTlvs.Add($"System Name: {link.DeviceId}");
                         break;
 
                     case TlvSystemDescription:
@@ -125,6 +133,7 @@ public sealed class LldpDecoder : ILinkDecoder
                         {
                             link.Platform = DecodeString(frame, valueOffset, length);
                         }
+                        link.RawTlvs.Add($"System Description: {link.Platform}");
                         break;
 
                     case TlvSystemCapabilities:
@@ -134,10 +143,16 @@ public sealed class LldpDecoder : ILinkDecoder
                             int enabled = (frame[valueOffset + 2] << 8) | frame[valueOffset + 3];
                             link.Capabilities = DecodeCapabilities(enabled);
                         }
+                        link.RawTlvs.Add($"Capabilities: {link.Capabilities}");
                         break;
 
                     case TlvManagementAddress:
                         ParseManagementAddress(frame, valueOffset, length, link);
+                        link.RawTlvs.Add($"Management Address: {link.ManagementAddress}");
+                        break;
+
+                    default:
+                        link.RawTlvs.Add($"TLV type {type}: {length} bytes");
                         break;
                 }
             }

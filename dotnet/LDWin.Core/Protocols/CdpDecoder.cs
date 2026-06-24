@@ -107,14 +107,17 @@ public sealed class CdpDecoder : ILinkDecoder
                 {
                     case TlvDeviceId:
                         link.DeviceId = DecodeString(frame, valueOffset, valueLength);
+                        link.RawTlvs.Add($"Device ID: {link.DeviceId}");
                         break;
 
                     case TlvAddresses:
                         link.ManagementAddress = ParseAddresses(frame, valueOffset, valueLength);
+                        link.RawTlvs.Add($"Addresses: {link.ManagementAddress}");
                         break;
 
                     case TlvPortId:
                         link.PortId = DecodeString(frame, valueOffset, valueLength);
+                        link.RawTlvs.Add($"Port ID: {link.PortId}");
                         break;
 
                     case TlvCapabilities:
@@ -126,14 +129,17 @@ public sealed class CdpDecoder : ILinkDecoder
                                        | frame[valueOffset + 3];
                             link.Capabilities = DecodeCapabilities(caps);
                         }
+                        link.RawTlvs.Add($"Capabilities: {link.Capabilities}");
                         break;
 
                     case TlvSoftwareVersion:
                         link.SoftwareVersion = DecodeString(frame, valueOffset, valueLength);
+                        link.RawTlvs.Add($"Software Version: {link.SoftwareVersion}");
                         break;
 
                     case TlvPlatform:
                         link.Platform = DecodeString(frame, valueOffset, valueLength);
+                        link.RawTlvs.Add($"Platform: {link.Platform}");
                         break;
 
                     case TlvNativeVlan:
@@ -142,6 +148,11 @@ public sealed class CdpDecoder : ILinkDecoder
                             int vlan = (frame[valueOffset] << 8) | frame[valueOffset + 1];
                             link.Vlan = vlan.ToString(CultureInfo.InvariantCulture);
                         }
+                        link.RawTlvs.Add($"Native VLAN: {link.Vlan}");
+                        break;
+
+                    default:
+                        link.RawTlvs.Add($"TLV 0x{type:X4}: {valueLength} bytes");
                         break;
                 }
 
