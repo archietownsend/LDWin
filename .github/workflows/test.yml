@@ -1,0 +1,35 @@
+name: Test
+
+# Builds LDWin.Core and runs the CDP/LLDP decoder unit tests. The Core library and
+# the test project target plain net8.0 (no WinForms), so this runs on Linux and gives
+# fast feedback on every push and pull request.
+
+on:
+  push:
+    paths:
+      - "dotnet/**"
+      - ".github/workflows/test.yml"
+  pull_request:
+    paths:
+      - "dotnet/**"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore dotnet/LDWin.Tests/LDWin.Tests.csproj
+
+      - name: Test
+        run: dotnet test dotnet/LDWin.Tests/LDWin.Tests.csproj -c Release --no-restore --verbosity normal

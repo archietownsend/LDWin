@@ -24,10 +24,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- SharpPcap talks to the user's installed Npcap (wpcap.dll) directly, so there is
-         no bundled tcpdump.exe and the HVCI-compatible Npcap driver is used as before.
-         The CDP/LLDP decoders hand-parse the raw frames, so PacketDotNet is not needed. -->
-    <PackageReference Include="SharpPcap" Version="6.3.0" />
+    <!-- All capture/decoding logic lives in LDWin.Core (net8.0, no WinForms) so it can be
+         unit-tested off-Windows. SharpPcap flows in transitively via this reference. -->
+    <ProjectReference Include="..\LDWin.Core\LDWin.Core.csproj" />
   </ItemGroup>
 
 </Project>
