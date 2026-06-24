@@ -155,7 +155,9 @@ public class RawTlvTests
         var buf = FrameBuilder.LldpEthernetHeader();
         FrameBuilder.AddLldpTlv(buf, 1, FrameBuilder.IdField(0x07, FrameBuilder.Ascii("sw")));
         FrameBuilder.AddLldpTlv(buf, 2, FrameBuilder.IdField(0x07, FrameBuilder.Ascii("Gi0/1")));
-        // Vendor-specific / unknown type 127 (0x7F), with 4 bytes of payload.
+        // IEEE 802.3 org-specific TLV (OUI 00:12:0F, subtype 1) with no info bytes.
+        // ParseOrgSpecific recognises the 802.3 OUI but the subtype-1 handler needs
+        // at least 1 info byte; the fall-through raw entry is "802.3 TLV subtype 1: 0 bytes".
         FrameBuilder.AddLldpTlv(buf, 127, new byte[] { 0x00, 0x12, 0x0F, 0x01 });
         FrameBuilder.AddLldpTlv(buf, 0, System.Array.Empty<byte>());
 
@@ -163,6 +165,6 @@ public class RawTlvTests
 
         Assert.True(ok);
         Assert.NotNull(data);
-        Assert.Contains(data!.RawTlvs, s => s.Contains("127") && s.Contains("4 bytes"));
+        Assert.Contains(data!.RawTlvs, s => s.Contains("802.3") && s.Contains("subtype 1"));
     }
 }
