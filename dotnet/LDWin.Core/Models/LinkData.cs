@@ -30,6 +30,13 @@ public sealed class LinkData
     public string Capabilities { get; set; } = "";
     public int TimeToLive { get; set; }
 
+    /// <summary>
+    /// Every TLV the decoder saw, as "Name: value" strings, in wire order. Lets the
+    /// GUI show a raw/advanced view for fields not surfaced as first-class properties.
+    /// Populated by the CDP/LLDP decoders.
+    /// </summary>
+    public List<string> RawTlvs { get; } = new();
+
     /// <summary>True once a decoder has populated at least the device + port.</summary>
     public bool HasNeighbourInfo =>
         !string.IsNullOrWhiteSpace(DeviceId) || !string.IsNullOrWhiteSpace(PortId);
