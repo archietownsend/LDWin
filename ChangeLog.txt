@@ -1,3 +1,11 @@
+Release 3.0.3 - 24 Jun 2026
+---------------------------
+* Network Connection drop-down now lists only active interfaces (Windows reports them
+  as up, excluding loopback/tunnel and idle virtual/WAN-miniport/Bluetooth adapters)
+* New LDWin logo and application icon
+* Removed the external blog link from the app and README
+
+
 Release 3.0.2 - 24 Jun 2026
 ---------------------------
 * Distribution change to reduce antivirus false positives: releases now ship a zipped
