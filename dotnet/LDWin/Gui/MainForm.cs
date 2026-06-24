@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -24,11 +25,19 @@ public sealed class MainForm : Form
     private readonly ComboBox _adapterCombo;
     private readonly Button _getButton;
     private readonly Button _saveButton;
+    private readonly Button _copyButton;
+    private readonly CheckBox _keepListeningCheck;
     private readonly TextBox _resultsBox;
     private readonly Label _statusLabel;
 
     private CancellationTokenSource? _captureCts;
     private string? _lastReport;
+
+    // Path to the settings file for persisting the last selected adapter.
+    private static readonly string SettingsDir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LDWin");
+    private static readonly string SettingsFile =
+        Path.Combine(SettingsDir, "settings.txt");
 
     public MainForm()
     {
@@ -38,7 +47,7 @@ public sealed class MainForm : Form
 
         // ---- Window chrome ----
         Text = "LDWin - Link Discovery for Windows";
-        ClientSize = new Size(560, 520);
+        ClientSize = new Size(560, 540);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         MinimizeBox = true;
@@ -60,15 +69,16 @@ public sealed class MainForm : Form
             DropDownStyle = ComboBoxStyle.DropDownList,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
+        _adapterCombo.SelectedIndexChanged += OnAdapterSelectionChanged;
 
-        // ---- Action buttons ----
+        // ---- Action buttons (row 1) ----
         _getButton = new Button
         {
             Text = "Get Link Data",
             Location = new Point(12, 72),
             Size = new Size(160, 30)
         };
-        _getButton.Click += OnGetLinkDataClick;
+        _getButton.Click += OnGetOrStopClick;
 
         _saveButton = new Button
         {
@@ -79,11 +89,28 @@ public sealed class MainForm : Form
         };
         _saveButton.Click += OnSaveLinkDataClick;
 
+        _copyButton = new Button
+        {
+            Text = "Copy",
+            Location = new Point(348, 72),
+            Size = new Size(100, 30),
+            Enabled = false
+        };
+        _copyButton.Click += OnCopyClick;
+
+        // ---- "Keep listening" checkbox (row 2) ----
+        _keepListeningCheck = new CheckBox
+        {
+            Text = "Keep listening until found",
+            Location = new Point(12, 110),
+            AutoSize = true
+        };
+
         // ---- Status line ----
         _statusLabel = new Label
         {
             Text = string.Empty,
-            Location = new Point(12, 112),
+            Location = new Point(12, 136),
             Size = new Size(536, 20),
             AutoEllipsis = true,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
@@ -92,8 +119,8 @@ public sealed class MainForm : Form
         // ---- Results area ----
         _resultsBox = new TextBox
         {
-            Location = new Point(12, 138),
-            Size = new Size(536, 320),
+            Location = new Point(12, 162),
+            Size = new Size(536, 316),
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Both,
@@ -107,22 +134,24 @@ public sealed class MainForm : Form
         var cdpLink = CreateLinkLabel(
             "About CDP",
             "https://en.wikipedia.org/wiki/Cisco_Discovery_Protocol",
-            new Point(12, 470));
+            new Point(12, 490));
 
         var lldpLink = CreateLinkLabel(
             "About LLDP",
             "https://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol",
-            new Point(110, 470));
+            new Point(110, 490));
 
         var blogLink = CreateLinkLabel(
             "chall32.blogspot.com",
             "http://chall32.blogspot.com",
-            new Point(220, 470));
+            new Point(220, 490));
 
         Controls.Add(connectionLabel);
         Controls.Add(_adapterCombo);
         Controls.Add(_getButton);
         Controls.Add(_saveButton);
+        Controls.Add(_copyButton);
+        Controls.Add(_keepListeningCheck);
         Controls.Add(_statusLabel);
         Controls.Add(_resultsBox);
         Controls.Add(cdpLink);
@@ -132,34 +161,9 @@ public sealed class MainForm : Form
         Load += OnFormLoad;
     }
 
-    private static LinkLabel CreateLinkLabel(string text, string url, Point location)
-    {
-        var link = new LinkLabel
-        {
-            Text = text,
-            Location = location,
-            AutoSize = true,
-            Anchor = AnchorStyles.Bottom | AnchorStyles.Left
-        };
-        link.LinkClicked += (_, _) => OpenUrl(url);
-        return link;
-    }
-
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                $"Unable to open the link:{Environment.NewLine}{url}{Environment.NewLine}{Environment.NewLine}{ex.Message}",
-                "LDWin",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-        }
-    }
+    // -------------------------------------------------------------------------
+    // Form load
+    // -------------------------------------------------------------------------
 
     private void OnFormLoad(object? sender, EventArgs e)
     {
@@ -178,9 +182,22 @@ public sealed class MainForm : Form
                 OpenUrl(_npcap.DownloadUrl);
             }
         }
+        else
+        {
+            // Feature 5: show Npcap version in title bar when available.
+            var version = _npcap.GetInstalledVersion();
+            if (!string.IsNullOrWhiteSpace(version))
+            {
+                Text = $"LDWin - Npcap {version}";
+            }
+        }
 
         LoadAdapters();
     }
+
+    // -------------------------------------------------------------------------
+    // Adapter helpers
+    // -------------------------------------------------------------------------
 
     private void LoadAdapters()
     {
@@ -194,7 +211,24 @@ public sealed class MainForm : Form
                 _adapterCombo.Items.Add(adapter);
             }
 
-            if (_adapterCombo.Items.Count > 0)
+            // Feature 3: restore previously selected adapter.
+            var saved = LoadSavedAdapterDescription();
+            bool restored = false;
+            if (!string.IsNullOrEmpty(saved))
+            {
+                for (int i = 0; i < _adapterCombo.Items.Count; i++)
+                {
+                    if (_adapterCombo.Items[i] is AdapterInfo ai &&
+                        string.Equals(ai.Description, saved, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _adapterCombo.SelectedIndex = i;
+                        restored = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!restored && _adapterCombo.Items.Count > 0)
             {
                 _adapterCombo.SelectedIndex = 0;
             }
@@ -213,7 +247,74 @@ public sealed class MainForm : Form
         }
     }
 
-    private async void OnGetLinkDataClick(object? sender, EventArgs e)
+    private void OnAdapterSelectionChanged(object? sender, EventArgs e)
+    {
+        // Feature 3: persist whenever the selection changes.
+        if (_adapterCombo.SelectedItem is AdapterInfo ai)
+        {
+            SaveAdapterDescription(ai.Description);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Settings persistence (Feature 3)
+    // -------------------------------------------------------------------------
+
+    private static string? LoadSavedAdapterDescription()
+    {
+        try
+        {
+            if (File.Exists(SettingsFile))
+            {
+                return File.ReadAllText(SettingsFile).Trim();
+            }
+        }
+        catch
+        {
+            // Settings failures must never crash the app.
+        }
+
+        return null;
+    }
+
+    private static void SaveAdapterDescription(string description)
+    {
+        try
+        {
+            Directory.CreateDirectory(SettingsDir);
+            File.WriteAllText(SettingsFile, description);
+        }
+        catch
+        {
+            // Settings failures must never crash the app.
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Get / Stop button (Features 1, 2, 4)
+    // -------------------------------------------------------------------------
+
+    private void OnGetOrStopClick(object? sender, EventArgs e)
+    {
+        if (_getButton.Text == "Stop")
+        {
+            // Feature 4: cancel the running capture/retry loop.
+            try
+            {
+                _captureCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed; nothing to cancel.
+            }
+        }
+        else
+        {
+            StartCapture();
+        }
+    }
+
+    private async void StartCapture()
     {
         if (_adapterCombo.SelectedItem is not AdapterInfo adapter)
         {
@@ -225,9 +326,18 @@ public sealed class MainForm : Form
             return;
         }
 
-        _getButton.Enabled = false;
+        // Feature 3: persist the adapter at capture start.
+        SaveAdapterDescription(adapter.Description);
+
+        // Switch button to "Stop" and disable Save/Copy while running.
+        _getButton.Text = "Stop";
         _saveButton.Enabled = false;
-        _statusLabel.Text = "Listening for CDP/LLDP announcements (up to 60s)...";
+        _copyButton.Enabled = false;
+        _adapterCombo.Enabled = false;
+        _keepListeningCheck.Enabled = false;
+
+        bool keepListening = _keepListeningCheck.Checked;
+        int attempt = 0;
 
         _captureCts?.Dispose();
         _captureCts = new CancellationTokenSource();
@@ -235,9 +345,27 @@ public sealed class MainForm : Form
 
         try
         {
-            var linkData = await Task.Run(
-                () => _capture.Capture(adapter, TimeSpan.FromSeconds(60), token),
-                token);
+            LinkData? linkData = null;
+
+            do
+            {
+                attempt++;
+                _statusLabel.Text = keepListening && attempt > 1
+                    ? $"Listening for CDP/LLDP announcements (attempt {attempt}, up to 60s)..."
+                    : "Listening for CDP/LLDP announcements (up to 60s)...";
+
+                linkData = await Task.Run(
+                    () => _capture.Capture(adapter, TimeSpan.FromSeconds(60), token),
+                    token);
+
+                if (linkData is null && keepListening && !token.IsCancellationRequested)
+                {
+                    _statusLabel.Text = $"No response yet (attempt {attempt}), retrying...";
+                    // Brief yield so the UI repaints the status before the next attempt.
+                    await Task.Delay(100, token);
+                }
+            }
+            while (linkData is null && keepListening && !token.IsCancellationRequested);
 
             if (linkData is null)
             {
@@ -246,9 +374,11 @@ public sealed class MainForm : Form
             }
             else
             {
-                _lastReport = linkData.ToReport();
+                // Feature 2: build full display text (report + raw TLVs).
+                _lastReport = BuildFullReport(linkData);
                 _resultsBox.Text = _lastReport;
                 _saveButton.Enabled = true;
+                _copyButton.Enabled = true;
                 _statusLabel.Text = $"Received {linkData.Protocol} link data.";
             }
         }
@@ -267,9 +397,40 @@ public sealed class MainForm : Form
         }
         finally
         {
-            _getButton.Enabled = true;
+            // Restore UI regardless of outcome.
+            _getButton.Text = "Get Link Data";
+            _adapterCombo.Enabled = true;
+            _keepListeningCheck.Enabled = true;
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Feature 2: raw TLV section
+    // -------------------------------------------------------------------------
+
+    private static string BuildFullReport(LinkData linkData)
+    {
+        var report = linkData.ToReport();
+
+        if (linkData.RawTlvs.Count == 0)
+        {
+            return report;
+        }
+
+        var sb = new StringBuilder(report);
+        sb.AppendLine();
+        sb.AppendLine("-- Raw TLVs --");
+        foreach (var tlv in linkData.RawTlvs)
+        {
+            sb.AppendLine(tlv);
+        }
+
+        return sb.ToString();
+    }
+
+    // -------------------------------------------------------------------------
+    // Save button
+    // -------------------------------------------------------------------------
 
     private void OnSaveLinkDataClick(object? sender, EventArgs e)
     {
@@ -307,6 +468,36 @@ public sealed class MainForm : Form
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Feature 1: Copy button
+    // -------------------------------------------------------------------------
+
+    private void OnCopyClick(object? sender, EventArgs e)
+    {
+        if (string.IsNullOrEmpty(_lastReport))
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(_lastReport);
+            _statusLabel.Text = "Report copied to clipboard.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Failed to copy to clipboard:{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "LDWin",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Form closing / dispose
+    // -------------------------------------------------------------------------
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         try
@@ -329,5 +520,38 @@ public sealed class MainForm : Form
         }
 
         base.Dispose(disposing);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static LinkLabel CreateLinkLabel(string text, string url, Point location)
+    {
+        var link = new LinkLabel
+        {
+            Text = text,
+            Location = location,
+            AutoSize = true,
+            Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+        };
+        link.LinkClicked += (_, _) => OpenUrl(url);
+        return link;
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Unable to open the link:{Environment.NewLine}{url}{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "LDWin",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
     }
 }

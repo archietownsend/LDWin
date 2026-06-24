@@ -21,6 +21,11 @@
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\network.ico</ApplicationIcon>
+
+    <!-- Compress bundled runtime assemblies in the single-file publish artifact.
+         This roughly halves the download size with no functional impact on WinForms
+         apps (unlike IL trimming, which is not enabled here). -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
