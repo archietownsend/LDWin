@@ -34,6 +34,7 @@ public sealed class LldpDecoder : ILinkDecoder
     private const int TlvSystemDescription = 6;
     private const int TlvSystemCapabilities = 7;
     private const int TlvManagementAddress = 8;
+    private const int TlvOrgSpecific = 127;
 
     private const int EthernetHeaderLength = 14;
 
@@ -151,6 +152,10 @@ public sealed class LldpDecoder : ILinkDecoder
                         link.RawTlvs.Add($"Management Address: {link.ManagementAddress}");
                         break;
 
+                    case TlvOrgSpecific:
+                        ParseOrgSpecific(frame, valueOffset, length, link);
+                        break;
+
                     default:
                         link.RawTlvs.Add($"TLV type {type}: {length} bytes");
                         break;
@@ -266,6 +271,66 @@ public sealed class LldpDecoder : ILinkDecoder
         {
             link.ManagementAddress = FormatHex(frame, addrOffset, addrLen);
         }
+    }
+
+    /// <summary>
+    /// Organizationally-specific TLV (type 127): 3-byte OUI + 1-byte subtype + info.
+    /// Decodes the common IEEE 802.1 extensions (Port VLAN ID and VLAN Name); other
+    /// OUIs/subtypes are recorded in the raw list only.
+    /// </summary>
+    private static void ParseOrgSpecific(byte[] frame, int valueOffset, int length, LinkData link)
+    {
+        if (length < 4)
+        {
+            link.RawTlvs.Add($"Org-specific TLV: {length} bytes");
+            return;
+        }
+
+        bool is8021 = frame[valueOffset] == 0x00 && frame[valueOffset + 1] == 0x80 && frame[valueOffset + 2] == 0xC2;
+        bool is8023 = frame[valueOffset] == 0x00 && frame[valueOffset + 1] == 0x12 && frame[valueOffset + 2] == 0x0F;
+        int subtype = frame[valueOffset + 3];
+        int infoOffset = valueOffset + 4;
+        int infoLen = length - 4;
+
+        // IEEE 802.1, subtype 1: Port VLAN ID (PVID).
+        if (is8021 && subtype == 1 && infoLen >= 2)
+        {
+            int pvid = (frame[infoOffset] << 8) | frame[infoOffset + 1];
+            link.PortVlanId = pvid.ToString(CultureInfo.InvariantCulture);
+            link.RawTlvs.Add($"Port VLAN ID: {pvid}");
+            return;
+        }
+
+        // IEEE 802.1, subtype 3: VLAN Name (2-byte VLAN ID + 1-byte name length + name).
+        if (is8021 && subtype == 3 && infoLen >= 3)
+        {
+            int vid = (frame[infoOffset] << 8) | frame[infoOffset + 1];
+            int nameLen = frame[infoOffset + 2];
+            string name = "";
+            if (nameLen > 0 && infoOffset + 3 + nameLen <= valueOffset + length)
+            {
+                name = DecodeString(frame, infoOffset + 3, nameLen);
+            }
+
+            link.VlanName = string.IsNullOrEmpty(name)
+                ? vid.ToString(CultureInfo.InvariantCulture)
+                : $"{vid} ({name})";
+            link.RawTlvs.Add($"VLAN Name: {link.VlanName}");
+            return;
+        }
+
+        // IEEE 802.3, subtype 1: MAC/PHY config/status - report autoneg state.
+        if (is8023 && subtype == 1 && infoLen >= 1)
+        {
+            bool autonegEnabled = (frame[infoOffset] & 0x02) != 0;
+            link.Duplex = autonegEnabled ? "auto-negotiated" : "fixed";
+            link.RawTlvs.Add($"802.3 MAC/PHY: autoneg {(autonegEnabled ? "on" : "off")}");
+            return;
+        }
+
+        string ouiName = is8021 ? "802.1" : is8023 ? "802.3"
+            : $"{frame[valueOffset]:X2}-{frame[valueOffset + 1]:X2}-{frame[valueOffset + 2]:X2}";
+        link.RawTlvs.Add($"{ouiName} TLV subtype {subtype}: {infoLen} bytes");
     }
 
     private static string DecodeCapabilities(int bitmap)

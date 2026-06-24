@@ -27,6 +27,10 @@ public sealed class LinkData
     public string SoftwareVersion { get; set; } = "";
     public string ManagementAddress { get; set; } = "";    // switch management IP
     public string Vlan { get; set; } = "";                 // native VLAN (CDP) / VLAN id
+    public string PortVlanId { get; set; } = "";           // LLDP 802.1 Port VLAN ID (PVID)
+    public string VlanName { get; set; } = "";             // LLDP 802.1 VLAN name (id + name)
+    public string VtpDomain { get; set; } = "";            // CDP VTP management domain
+    public string Duplex { get; set; } = "";               // CDP / LLDP duplex
     public string Capabilities { get; set; } = "";
     public int TimeToLive { get; set; }
 
@@ -60,7 +64,14 @@ public sealed class LinkData
         sb.AppendLine($"Platform / model    : {Platform}");
         sb.AppendLine($"Software version    : {SoftwareVersion}");
         sb.AppendLine($"Management address  : {ManagementAddress}");
-        sb.AppendLine($"VLAN                : {Vlan}");
+        sb.AppendLine($"Native VLAN         : {Vlan}");
+
+        // Optional fields - only shown when the announcement carried them.
+        if (!string.IsNullOrEmpty(PortVlanId)) sb.AppendLine($"Port VLAN ID (PVID) : {PortVlanId}");
+        if (!string.IsNullOrEmpty(VlanName)) sb.AppendLine($"VLAN name           : {VlanName}");
+        if (!string.IsNullOrEmpty(VtpDomain)) sb.AppendLine($"VTP domain          : {VtpDomain}");
+        if (!string.IsNullOrEmpty(Duplex)) sb.AppendLine($"Duplex              : {Duplex}");
+
         sb.AppendLine($"Capabilities        : {Capabilities}");
         sb.AppendLine($"TTL (seconds)       : {TimeToLive}");
         return sb.ToString();

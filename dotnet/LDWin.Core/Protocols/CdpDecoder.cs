@@ -33,7 +33,9 @@ public sealed class CdpDecoder : ILinkDecoder
     private const int TlvCapabilities = 0x0004;
     private const int TlvSoftwareVersion = 0x0005;
     private const int TlvPlatform = 0x0006;
+    private const int TlvVtpDomain = 0x0009;
     private const int TlvNativeVlan = 0x000A;
+    private const int TlvDuplex = 0x000B;
 
     private const int EthernetHeaderLength = 14;
     private const int LlcSnapLength = 8;   // LLC(3) + SNAP(5)
@@ -142,6 +144,11 @@ public sealed class CdpDecoder : ILinkDecoder
                         link.RawTlvs.Add($"Platform: {link.Platform}");
                         break;
 
+                    case TlvVtpDomain:
+                        link.VtpDomain = DecodeString(frame, valueOffset, valueLength);
+                        link.RawTlvs.Add($"VTP Domain: {link.VtpDomain}");
+                        break;
+
                     case TlvNativeVlan:
                         if (valueLength >= 2)
                         {
@@ -149,6 +156,14 @@ public sealed class CdpDecoder : ILinkDecoder
                             link.Vlan = vlan.ToString(CultureInfo.InvariantCulture);
                         }
                         link.RawTlvs.Add($"Native VLAN: {link.Vlan}");
+                        break;
+
+                    case TlvDuplex:
+                        if (valueLength >= 1)
+                        {
+                            link.Duplex = frame[valueOffset] != 0 ? "Full" : "Half";
+                        }
+                        link.RawTlvs.Add($"Duplex: {link.Duplex}");
                         break;
 
                     default:
