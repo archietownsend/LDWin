@@ -36,6 +36,12 @@ keep alongside the program — it ships as a single self-contained `LDWin.exe`.
   automatically.
 - **Administrative rights** — packet capture requires elevation (LDWin requests it).
 
+## Download
+
+Grab the latest **`LDWin.exe`** from the [Releases page](../../releases/latest). It is a
+self-contained build, so you do not need to install .NET — just install [Npcap] and run
+`LDWin.exe` as administrator.
+
 ## How to use
 
 1. Start the program (it will request administrator rights).
@@ -71,6 +77,10 @@ The CDP/LLDP decoders are unit-tested ([`Test`](.github/workflows/test.yml) work
 ```
 dotnet test dotnet/LDWin.Tests/LDWin.Tests.csproj
 ```
+
+Releases are published by the [`Release`](.github/workflows/release.yml) workflow: push a
+tag (`git tag v3.0.0 && git push origin v3.0.0`) or run it manually with a tag, and it
+builds the self-contained exe and attaches it to a GitHub Release.
 
 ### Project layout
 
