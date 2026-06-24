@@ -1,74 +1,109 @@
 LDWin
 =====
 
-## Link Discovery Client for Windows — Windows 11 Compatible Fork
+## Link Discovery Client for Windows — Windows 11 Compatible
 
-This is an updated fork of LDWin that works on Windows 11 with **Core Isolation > Memory Integrity** (HVCI) enabled. The original WinPcap-era capture driver is blocked by HVCI; this version replaces it with [Npcap], whose driver is signed and fully compatible with Core Isolation.
+LDWin tells you **which switch and switch port a network cable is plugged into**, by
+listening for the link-discovery announcements (CDP / LLDP) that the directly-connected
+switch broadcasts. No more tracing cables under floors or guessing at patch panels.
 
-<p align="center"> 
+This is an updated fork that works on **Windows 11 with Core Isolation > Memory
+Integrity (HVCI) enabled**. The original WinPcap-era capture driver is blocked by HVCI;
+this version captures through [Npcap], whose driver is signed for and compatible with
+Core Isolation — so **Core Isolation does not need to be disabled**.
+
+<p align="center">
 <img src="https://github.com/chall32/LDWin/blob/master/LDWin.png?raw=true" alt="LDWin is a Link Discovery Protocol Client for Windows"/>
 </p>
 
-### What is Link Discovery?
-Link discovery lets you find out what network switch port (and switch name) a cable is plugged into by listening for announcements from the directly connected switch. Useful when tracing cables or diagnosing connectivity.
+### Supported protocols
 
-LDWin supports:
++ [CDP] — Cisco Discovery Protocol
++ [LLDP] — Link Layer Discovery Protocol
 
-+   [CDP] - Cisco Discovery Protocol
-+   [LLDP] - Link Layer Discovery Protocol
+---
 
-### Requirements
+## Two editions
+
+This repository contains two builds of LDWin. Both require [Npcap] and work with Core
+Isolation enabled; pick whichever you prefer.
+
+| | **LDWin .NET** (recommended) | **LDWin (AutoIt)** |
+|---|---|---|
+| Source | `dotnet/` (C# / .NET 8, WinForms) | `LDWin.au3` (AutoIt) |
+| Packet capture | In-process via SharpPcap/Npcap | Shells out to `tcpdump.exe` |
+| Files to ship | Single `LDWin.exe` | `LDWin.exe` **+** `tcpdump.exe` (keep together) |
+| Build workflow | `Build LDWin (.NET)` | `Build LDWin` |
+
+The **.NET** edition decodes CDP/LLDP itself, so there is no bundled `tcpdump.exe`, no
+temp-file extraction, and nothing to keep alongside the exe — which also means fewer
+antivirus false positives. New work targets this edition; the AutoIt build is kept for
+continuity.
+
+---
+
+## Requirements
 
 - **Windows 10 / 11** (including with Core Isolation / HVCI enabled)
-- **[Npcap]** must be installed — the free installer from https://npcap.com/ is fine. LDWin will tell you if it isn't found.
-- **Keep `LDWin.exe` and `tcpdump.exe` in the same folder.** LDWin runs `tcpdump.exe` from its own directory. LDWin will prompt you if `tcpdump.exe` is missing.
+- **[Npcap]** installed — the free installer from <https://npcap.com/> is fine. LDWin
+  detects whether it is present and points you to the download if it is missing.
+  Installing in "WinPcap API-compatible Mode" is optional; LDWin finds Npcap's libraries
+  automatically.
+- **Administrative rights** — packet capture requires elevation (both editions request it).
 
-Installing Npcap in "WinPcap API-compatible Mode" is optional — LDWin finds Npcap's libraries automatically.
+> **AutoIt edition only:** `LDWin.exe` runs `tcpdump.exe` from its own folder, so the two
+> must stay in the same directory. The .NET edition has no such requirement.
 
-### How to Use
+## How to use
 
-**You must have administrative rights to run this program.**
-
-1. Start the program
-2. From the **Network Connection:** drop-down, select the network adapter you want to listen on
-3. Click **Get Link Data**
-4. LDWin listens for link protocol announcements — it may take up to 60 seconds to receive one
-5. Once an announcement arrives the information is displayed in the results panel
-6. Use **Save Link Data** to save the results to a text file
+1. Start the program (it will request administrator rights).
+2. From the **Network Connection** drop-down, select the network adapter you want to listen on.
+3. Click **Get Link Data**.
+4. LDWin listens for a CDP/LLDP announcement — this can take up to 60 seconds.
+5. The decoded switch name, port, management address, VLAN, platform, etc. appear in the results panel.
+6. Use **Save Link Data** to write the results to a text file.
 
 A valid TCP/IP address is not required to receive link information.
 
-### A note on antivirus / Windows Defender
+## A note on antivirus / Windows Defender
 
-Because LDWin is an unsigned AutoIt program that ships a packet-capture tool (`tcpdump`), Windows Defender may false-flag it. It is not malware. Steps taken to reduce this:
+Because LDWin captures network traffic and (in the AutoIt edition) ships a packet-capture
+tool, Windows Defender may false-flag it. **It is not malware.** Mitigations already in place:
 
-- `tcpdump.exe` is run directly from the program folder — it is never dropped into `%TEMP%`
-- The build does not compress the executable (compressed payloads look like packers to AV)
-- Proper version/publisher metadata is stamped onto both binaries at build time
+- The .NET edition captures in-process — it never drops or executes a separate sniffer binary.
+- The AutoIt edition runs `tcpdump.exe` from its own folder rather than extracting it to `%TEMP%`.
+- Builds are uncompressed and carry proper version/publisher metadata.
 
-The most reliable fix remains [submitting the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission). On your own machine you can also allow it via **Windows Security → Protection history**.
+If you still hit a block, the most reliable fix is to
+[submit the binary to Microsoft as a false positive](https://www.microsoft.com/en-us/wdsi/filesubmission).
+On your own machine you can allow it via **Windows Security → Protection history**.
 
-### Building from Source
+## Building from source
 
-Both binaries are built automatically on Windows by the [`Build LDWin`](.github/workflows/build.yml) GitHub Actions workflow — run it from the repository's **Actions** tab ("Run workflow").
+Both editions build on Windows via GitHub Actions — run them from the repository's
+**Actions** tab ("Run workflow"). Neither requires a local toolchain.
 
-The workflow:
-1. Builds `tcpdump.exe` from source against the [Npcap] SDK (so it loads Npcap's `wpcap.dll` at runtime)
-2. Compiles `LDWin.exe` with AutoIt's Aut2Exe
-3. Commits the rebuilt binaries back to the branch
+- **LDWin .NET** — [`Build LDWin (.NET)`](.github/workflows/build-dotnet.yml) runs
+  `dotnet publish` to produce a single self-contained `LDWin.exe`.
+  Locally: `dotnet publish dotnet/LDWin/LDWin.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`
+- **LDWin (AutoIt)** — [`Build LDWin`](.github/workflows/build.yml) builds an
+  Npcap-linked `tcpdump.exe` from source and compiles `LDWin.au3` with AutoIt's Aut2Exe.
 
-### What's New?
-***See the [changelog] for what's new in the most recent release.***
+## What's new?
+
+See the [changelog] for the most recent changes.
 
 ---
 
 ### Credits
 
-LDWin was originally created by **Chris Hall** (2010–2014).  
-Original project: [github.com/chall32/LDWin](https://github.com/chall32/LDWin) · Blog: [chall32.blogspot.com]
+LDWin was originally created by **Chris Hall** (2010–2014) and is based on his
+[WinCDP] project.
+Original repository: <https://github.com/chall32/LDWin> · Blog: [chall32.blogspot.com]
 
 [Npcap]: https://npcap.com/
 [changelog]: ChangeLog.txt
 [chall32.blogspot.com]: http://chall32.blogspot.com
 [CDP]: http://en.wikipedia.org/wiki/Cisco_Discovery_Protocol
 [LLDP]: http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol
+[WinCDP]: http://github.com/chall32/WinCDP
