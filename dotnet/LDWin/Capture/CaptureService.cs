@@ -1,0 +1,231 @@
+using System.Diagnostics;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using LDWin.Models;
+using LDWin.Protocols;
+using SharpPcap;
+using SharpPcap.LibPcap;
+
+namespace LDWin.Capture;
+
+/// <summary>
+/// SharpPcap/Npcap-backed implementation of <see cref="ICaptureService"/>.
+/// Enumerates capture-capable adapters and listens on a chosen adapter for the
+/// first CDP or LLDP frame, decoding it via the registered
+/// <see cref="ILinkDecoder"/> implementations.
+/// </summary>
+public sealed class CaptureService : ICaptureService
+{
+    // BPF filter: LLDP uses EtherType 0x88cc; CDP is delivered to the
+    // Cisco multicast MAC 01:00:0c:cc:cc:cc (SNAP-encapsulated, no fixed
+    // EtherType), so we match on the destination MAC as well.
+    private const string CdpLldpFilter = "ether proto 0x88cc or ether dst 01:00:0c:cc:cc:cc";
+
+    private const int ReadTimeoutMs = 1000;
+
+    private readonly IReadOnlyList<ILinkDecoder> _decoders;
+
+    public CaptureService(IEnumerable<ILinkDecoder> decoders)
+    {
+        ArgumentNullException.ThrowIfNull(decoders);
+        _decoders = decoders.ToList();
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<AdapterInfo> GetAdapters()
+    {
+        var adapters = new List<AdapterInfo>();
+
+        // CaptureDeviceList.Instance is a live, refreshing snapshot of the
+        // adapters Npcap can capture on.
+        foreach (var device in CaptureDeviceList.Instance)
+        {
+            try
+            {
+                string description = "";
+                string ipAddress = "";
+                string macAddress = "";
+
+                if (device is LibPcapLiveDevice liveDevice)
+                {
+                    // Prefer the friendly name from the interface, falling back
+                    // to the raw device description.
+                    var friendly = liveDevice.Interface?.FriendlyName;
+                    description = !string.IsNullOrWhiteSpace(friendly)
+                        ? friendly!
+                        : liveDevice.Description ?? "";
+
+                    if (liveDevice.Interface?.Addresses is { } addresses)
+                    {
+                        foreach (var addr in addresses)
+                        {
+                            var sockAddr = addr.Addr?.ipAddress;
+                            if (sockAddr is { AddressFamily: AddressFamily.InterNetwork })
+                            {
+                                ipAddress = sockAddr.ToString();
+                                break;
+                            }
+                        }
+                    }
+
+                    if (liveDevice.Interface?.MacAddress is { } mac)
+                    {
+                        macAddress = FormatMac(mac);
+                    }
+                }
+                else
+                {
+                    description = device.Description ?? "";
+                }
+
+                adapters.Add(new AdapterInfo
+                {
+                    Name = device.Name,
+                    Description = description,
+                    IpAddress = ipAddress,
+                    MacAddress = macAddress,
+                });
+            }
+            catch
+            {
+                // A single misbehaving adapter must not break enumeration; fall
+                // back to just the device name so it remains selectable.
+                try
+                {
+                    adapters.Add(new AdapterInfo { Name = device.Name });
+                }
+                catch
+                {
+                    // Even the name was unavailable - skip this device entirely.
+                }
+            }
+        }
+
+        return adapters;
+    }
+
+    /// <inheritdoc />
+    public LinkData? Capture(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(adapter);
+
+        var device = FindDevice(adapter.Name)
+            ?? throw new InvalidOperationException(
+                $"Capture adapter '{adapter.Name}' was not found. It may have been removed " +
+                "or Npcap may not be installed.");
+
+        var deadline = Stopwatch.StartNew();
+        bool opened = false;
+
+        try
+        {
+            // SharpPcap 6.x configuration-based open. Promiscuous mode is needed
+            // to see CDP/LLDP frames destined for switch multicast addresses.
+            device.Open(new DeviceConfiguration
+            {
+                Mode = DeviceModes.Promiscuous,
+                ReadTimeout = ReadTimeoutMs,
+            });
+            opened = true;
+
+            device.Filter = CdpLldpFilter;
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (deadline.Elapsed >= timeout)
+                {
+                    return null;
+                }
+
+                // GetNextPacket returns after at most ReadTimeoutMs even when no
+                // packet arrives, so the loop stays responsive to the deadline
+                // and cancellation token.
+                var status = device.GetNextPacket(out PacketCapture e);
+
+                if (status != GetPacketStatus.PacketRead)
+                {
+                    // Timeout / no packet this iteration - re-check deadline & token.
+                    continue;
+                }
+
+                byte[] frame;
+                try
+                {
+                    frame = e.GetPacket().Data;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (frame is not { Length: > 0 })
+                {
+                    continue;
+                }
+
+                foreach (var decoder in _decoders)
+                {
+                    LinkData? data;
+                    try
+                    {
+                        if (!decoder.TryDecode(frame, out data) || data is null)
+                        {
+                            continue;
+                        }
+                    }
+                    catch
+                    {
+                        // A decoder throwing on a malformed frame must not abort
+                        // the capture; just try the next decoder / next frame.
+                        continue;
+                    }
+
+                    PopulateLocalFields(data, adapter);
+                    return data;
+                }
+            }
+        }
+        finally
+        {
+            if (opened)
+            {
+                try
+                {
+                    device.Close();
+                }
+                catch
+                {
+                    // Best-effort close; nothing actionable on failure.
+                }
+            }
+        }
+    }
+
+    private static void PopulateLocalFields(LinkData data, AdapterInfo adapter)
+    {
+        data.AdapterName = adapter.Name;
+        data.AdapterDescription = adapter.Description;
+        data.LocalIpAddress = adapter.IpAddress;
+        data.LocalMacAddress = adapter.MacAddress;
+    }
+
+    private static ILiveDevice? FindDevice(string name)
+    {
+        foreach (var device in CaptureDeviceList.Instance)
+        {
+            if (string.Equals(device.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return device;
+            }
+        }
+
+        return null;
+    }
+
+    private static string FormatMac(PhysicalAddress mac)
+    {
+        return string.Join(":", mac.GetAddressBytes().Select(b => b.ToString("X2")));
+    }
+}
