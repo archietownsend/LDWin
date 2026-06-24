@@ -101,11 +101,88 @@ public sealed class CaptureService : ICaptureService
             }
         }
 
+        // Npcap enumerates every capture-capable interface, including virtual /
+        // WAN-miniport / Wi-Fi-Direct pseudo-adapters, Bluetooth PAN and the Npcap
+        // loopback adapter. Filter down to interfaces Windows reports as actually
+        // up and physical-ish, matching on the {GUID} embedded in the device name.
+        var usable = GetUsableInterfaceGuids();
+        if (usable.Count > 0)
+        {
+            var filtered = adapters
+                .Where(a =>
+                {
+                    var guid = ExtractGuid(a.Name);
+                    return guid is not null && usable.Contains(guid);
+                })
+                .ToList();
+
+            // Only apply the filter if it leaves something selectable; otherwise
+            // fall back to the full list rather than show an empty drop-down.
+            if (filtered.Count > 0)
+            {
+                return filtered;
+            }
+        }
+
         return adapters;
     }
 
-    /// <inheritdoc />
-    public LinkData? Capture(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// GUIDs (upper-case, no braces) of network interfaces that are operationally up
+    /// and not loopback/tunnel - i.e. the adapters worth listening on.
+    /// </summary>
+    private static HashSet<string> GetUsableInterfaceGuids()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                try
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up)
+                    {
+                        continue;
+                    }
+
+                    if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
+                    {
+                        continue;
+                    }
+
+                    var id = nic.Id?.Trim('{', '}');
+                    if (!string.IsNullOrEmpty(id))
+                    {
+                        set.Add(id!.ToUpperInvariant());
+                    }
+                }
+                catch
+                {
+                    // Skip a single problematic interface.
+                }
+            }
+        }
+        catch
+        {
+            // If enumeration fails entirely, return an empty set so GetAdapters
+            // falls back to showing every Npcap device unfiltered.
+        }
+
+        return set;
+    }
+
+    /// <summary>Extracts the GUID from an Npcap device name like \Device\NPF_{GUID}.</summary>
+    private static string? ExtractGuid(string deviceName)
+    {
+        int open = deviceName.IndexOf('{');
+        int close = deviceName.IndexOf('}');
+        if (open >= 0 && close > open)
+        {
+            return deviceName.Substring(open + 1, close - open - 1).ToUpperInvariant();
+        }
+
+        return null;
+    }
     {
         ArgumentNullException.ThrowIfNull(adapter);
 

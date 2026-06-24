@@ -13,7 +13,7 @@ this version captures through [Npcap], whose driver is signed for and compatible
 Core Isolation — so **Core Isolation does not need to be disabled**.
 
 <p align="center">
-<img src="https://github.com/chall32/LDWin/blob/master/LDWin.png?raw=true" alt="LDWin is a Link Discovery Protocol Client for Windows"/>
+<img src="LDWin.png" alt="LDWin is a Link Discovery Protocol Client for Windows"/>
 </p>
 
 ### Supported protocols
@@ -103,12 +103,10 @@ See the [changelog] for the most recent changes.
 ### Credits
 
 LDWin was originally created by **Chris Hall** (2010–2014) and is based on his
-[WinCDP] project.
-Original repository: <https://github.com/chall32/LDWin> · Blog: [chall32.blogspot.com]
+[WinCDP] project. Original repository: <https://github.com/chall32/LDWin>
 
 [Npcap]: https://npcap.com/
 [changelog]: ChangeLog.txt
-[chall32.blogspot.com]: http://chall32.blogspot.com
 [CDP]: http://en.wikipedia.org/wiki/Cisco_Discovery_Protocol
 [LLDP]: http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol
 [WinCDP]: http://github.com/chall32/WinCDP
