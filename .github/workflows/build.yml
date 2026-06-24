@@ -8,9 +8,7 @@ name: Build LDWin
 #      bundled Microolap build's private driver was not.
 #   2. Compile LDWin.au3 -> LDWin.exe with AutoIt's Aut2Exe (FileInstall embeds the
 #      freshly built tcpdump.exe).
-#   3. Optionally code-sign both binaries (if CODE_SIGN_PFX_BASE64 / CODE_SIGN_PASSWORD
-#      secrets are set) so Windows Defender does not false-flag them.
-#   4. Optionally commit the rebuilt tcpdump.exe + LDWin.exe back to the branch.
+#   3. Optionally commit the rebuilt tcpdump.exe + LDWin.exe back to the branch.
 
 on:
   workflow_dispatch:
@@ -65,49 +63,6 @@ jobs:
           if (-not $exe) { throw "tcpdump.exe was not produced" }
           Write-Host "Built $($exe.FullName) ($($exe.Length) bytes)"
           Copy-Item $exe.FullName "$env:GITHUB_WORKSPACE\tcpdump.exe" -Force
-
-      # ---- Code-signing setup (optional) ----
-      # Provide repository secrets CODE_SIGN_PFX_BASE64 (base64 of your .pfx) and
-      # CODE_SIGN_PASSWORD to sign the binaries. Without them the build still runs and
-      # produces unsigned binaries (Windows Defender may flag unsigned AutoIt/sniffer exes).
-      - name: Prepare code-signing
-        shell: pwsh
-        env:
-          PFX_B64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $pfxBytes = $null
-          if ($env:PFX_B64) {
-            try {
-              $pfxBytes = [Convert]::FromBase64String($env:PFX_B64)
-            } catch {
-              Write-Host "::warning::CODE_SIGN_PFX_BASE64 is set but is not valid base-64 - skipping signing. Error: $_"
-            }
-          }
-          if ($pfxBytes) {
-            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", $pfxBytes)
-            $st = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-                  Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
-            if (-not $st) { throw "signtool.exe not found on the runner" }
-            "SIGNTOOL=$($st.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-            "CERT_PFX=$env:RUNNER_TEMP\cert.pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-            "SIGNING=1" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-            Write-Host "Code-signing enabled (signtool: $($st.FullName))"
-          } else {
-            "SIGNING=0" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-            Write-Host "::warning::No valid CODE_SIGN_PFX_BASE64 secret - binaries will be left unsigned."
-          }
-
-      - name: Sign tcpdump.exe
-        shell: pwsh
-        env:
-          CERT_PW: ${{ secrets.CODE_SIGN_PASSWORD }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ($env:SIGNING -ne '1') { Write-Host "No signing certificate - skipping"; exit 0 }
-          & $env:SIGNTOOL sign /f $env:CERT_PFX /p $env:CERT_PW /fd SHA256 `
-            /tr http://timestamp.digicert.com /td SHA256 "$PWD\tcpdump.exe"
-          if ($LASTEXITCODE -ne 0) { throw "signing tcpdump.exe failed ($LASTEXITCODE)" }
 
       - name: Upload tcpdump.exe artifact
         uses: actions/upload-artifact@v4
@@ -184,17 +139,6 @@ jobs:
             --set-product-version "2.3.0.0"
           if ($LASTEXITCODE -ne 0) { throw "rcedit failed ($LASTEXITCODE)" }
           Write-Host "Stamped version metadata onto LDWin.exe"
-
-      - name: Sign LDWin.exe
-        shell: pwsh
-        env:
-          CERT_PW: ${{ secrets.CODE_SIGN_PASSWORD }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ($env:SIGNING -ne '1') { Write-Host "No signing certificate - skipping"; exit 0 }
-          & $env:SIGNTOOL sign /f $env:CERT_PFX /p $env:CERT_PW /fd SHA256 `
-            /tr http://timestamp.digicert.com /td SHA256 "$PWD\LDWin.exe"
-          if ($LASTEXITCODE -ne 0) { throw "signing LDWin.exe failed ($LASTEXITCODE)" }
 
       - name: Upload LDWin.exe artifact
         uses: actions/upload-artifact@v4
