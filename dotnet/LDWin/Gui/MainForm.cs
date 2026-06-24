@@ -339,41 +339,44 @@ public sealed class MainForm : Form
 
         try
         {
-            LinkData? linkData = null;
+            IReadOnlyList<LinkData>? neighbours = null;
 
             do
             {
                 attempt++;
                 _statusLabel.Text = keepListening && attempt > 1
-                    ? $"Listening for CDP/LLDP announcements (attempt {attempt}, up to 60s)..."
-                    : "Listening for CDP/LLDP announcements (up to 60s)...";
+                    ? $"Listening for all CDP/LLDP neighbours (attempt {attempt}, up to 60s)..."
+                    : "Listening for all CDP/LLDP neighbours (up to 60s)...";
 
-                linkData = await Task.Run(
-                    () => _capture.Capture(adapter, TimeSpan.FromSeconds(60), token),
+                neighbours = await Task.Run(
+                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(60), token),
                     token);
 
-                if (linkData is null && keepListening && !token.IsCancellationRequested)
+                if (neighbours.Count == 0 && keepListening && !token.IsCancellationRequested)
                 {
                     _statusLabel.Text = $"No response yet (attempt {attempt}), retrying...";
-                    // Brief yield so the UI repaints the status before the next attempt.
+                    // Brief yield so the UI repaints before the next attempt.
                     await Task.Delay(100, token);
                 }
             }
-            while (linkData is null && keepListening && !token.IsCancellationRequested);
+            while (neighbours.Count == 0 && keepListening && !token.IsCancellationRequested);
 
-            if (linkData is null)
+            if (neighbours.Count == 0)
             {
                 _statusLabel.Text =
                     "No link data received - the switch may not send CDP/LLDP, or it may take longer. Try again.";
             }
             else
             {
-                // Feature 2: build full display text (report + raw TLVs).
-                _lastReport = BuildFullReport(linkData);
+                _lastReport = BuildMultiNeighbourReport(neighbours);
                 _resultsBox.Text = _lastReport;
                 _saveButton.Enabled = true;
                 _copyButton.Enabled = true;
-                _statusLabel.Text = $"Received {linkData.Protocol} link data.";
+
+                string summary = neighbours.Count == 1
+                    ? $"Found 1 neighbour ({neighbours[0].Protocol})."
+                    : $"Found {neighbours.Count} neighbours.";
+                _statusLabel.Text = summary;
             }
         }
         catch (OperationCanceledException)
@@ -399,24 +402,39 @@ public sealed class MainForm : Form
     }
 
     // -------------------------------------------------------------------------
-    // Feature 2: raw TLV section
+    // Feature 2: raw TLV section + multi-neighbour display
     // -------------------------------------------------------------------------
 
-    private static string BuildFullReport(LinkData linkData)
+    private static string BuildMultiNeighbourReport(IReadOnlyList<LinkData> neighbours)
     {
-        var report = linkData.ToReport();
-
-        if (linkData.RawTlvs.Count == 0)
+        var sb = new StringBuilder();
+        for (int i = 0; i < neighbours.Count; i++)
         {
-            return report;
-        }
+            var linkData = neighbours[i];
+            string label = neighbours.Count == 1
+                ? $"Neighbour 1 ({linkData.Protocol})"
+                : $"Neighbour {i + 1} ({linkData.Protocol}) — {linkData.DeviceId}";
 
-        var sb = new StringBuilder(report);
-        sb.AppendLine();
-        sb.AppendLine("-- Raw TLVs --");
-        foreach (var tlv in linkData.RawTlvs)
-        {
-            sb.AppendLine(tlv);
+            sb.AppendLine(new string('=', 50));
+            sb.AppendLine(label);
+            sb.AppendLine(new string('=', 50));
+            sb.AppendLine();
+            sb.Append(linkData.ToReport());
+
+            if (linkData.RawTlvs.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("-- Raw TLVs --");
+                foreach (var tlv in linkData.RawTlvs)
+                {
+                    sb.AppendLine(tlv);
+                }
+            }
+
+            if (i < neighbours.Count - 1)
+            {
+                sb.AppendLine();
+            }
         }
 
         return sb.ToString();

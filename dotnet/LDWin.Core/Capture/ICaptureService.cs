@@ -18,4 +18,13 @@ public interface ICaptureService
     /// fields populated) or <c>null</c> if nothing was received in time.
     /// </summary>
     LinkData? Capture(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Listen on <paramref name="adapter"/> for the full <paramref name="timeout"/>,
+    /// collecting every distinct CDP/LLDP neighbour that announces itself.
+    /// Neighbours are deduplicated by (Protocol, DeviceId, PortId). Returns the
+    /// collected list in the order first seen; the list is empty if nothing
+    /// arrived before the deadline or cancellation.
+    /// </summary>
+    IReadOnlyList<LinkData> CaptureAll(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default);
 }
