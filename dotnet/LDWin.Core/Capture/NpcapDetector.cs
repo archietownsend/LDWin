@@ -44,6 +44,12 @@ public sealed class NpcapDetector : INpcapDetector
         }
 
         // (b) The "npcap" (Npcap) or "npf" (WinPcap) driver service.
+        // The registry is Windows-only; LDWin.Core targets net8.0 so guard the call.
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
         foreach (var service in new[] { "npcap", "npf" })
         {
             try
