@@ -1,21 +1,19 @@
 name: Build LDWin (.NET)
 
-# Builds the C# / WinForms rewrite of LDWin. Unlike the AutoIt build, this
-# produces a single self-contained LDWin.exe that captures and decodes CDP/LLDP
-# in-process via SharpPcap/Npcap - there is no bundled tcpdump.exe.
+# CI build of the C# / WinForms LDWin. Produces a single self-contained LDWin.exe
+# that captures and decodes CDP/LLDP in-process via SharpPcap/Npcap (no bundled
+# tcpdump.exe) and uploads it as a workflow artifact for verification.
+#
+# Distribution is handled separately by release.yml, which publishes a GitHub
+# Release with the exe attached. This workflow does not commit binaries.
 #
 # Run from the Actions tab ("Run workflow").
 
 on:
   workflow_dispatch:
-    inputs:
-      commit_exe:
-        description: "Commit the published LDWin.exe back to this branch"
-        type: boolean
-        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -51,17 +49,3 @@ jobs:
           name: LDWin-dotnet
           path: publish/LDWin.exe
           if-no-files-found: error
-
-      - name: Commit published binary
-        if: inputs.commit_exe
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item publish\LDWin.exe dist\LDWin.exe -Force
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/LDWin.exe
-          $changed = (git status --porcelain dist/LDWin.exe)
-          if (-not $changed) { Write-Host "Binary unchanged - nothing to commit"; exit 0 }
-          git commit -m "CI: publish .NET LDWin.exe [skip ci]"
-          git push
