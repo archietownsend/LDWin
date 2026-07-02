@@ -1,3 +1,14 @@
+Release 3.0.5 - 02 Jul 2026
+---------------------------
+* Performance: neighbours now appear in the results box the instant each one is
+  decoded instead of only after the full 60-second listen window closes. The
+  "show all neighbours" window still runs its course to catch additional
+  switches, but a single-neighbour result (the common case) now feels instant
+  again rather than always taking a full minute
+* Status bar shows "Found N neighbour(s) - still listening for more..." while
+  the capture continues, and Stop can be used to end early once enough is shown
+
+
 Release 3.0.4 - 24 Jun 2026
 ---------------------------
 * Show all neighbours: LDWin now listens for the full 60-second capture window
