@@ -26,5 +26,15 @@ public interface ICaptureService
     /// collected list in the order first seen; the list is empty if nothing
     /// arrived before the deadline or cancellation.
     /// </summary>
-    IReadOnlyList<LinkData> CaptureAll(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default);
+    /// <param name="onNeighbourFound">
+    /// Optional callback invoked as soon as each new distinct neighbour is decoded,
+    /// so a caller (e.g. the GUI) can display results immediately instead of
+    /// waiting for the full timeout - listening continues afterwards in case more
+    /// switches are on the same segment.
+    /// </param>
+    IReadOnlyList<LinkData> CaptureAll(
+        AdapterInfo adapter,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default,
+        Action<LinkData>? onNeighbourFound = null);
 }

@@ -284,7 +284,11 @@ public sealed class CaptureService : ICaptureService
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<LinkData> CaptureAll(AdapterInfo adapter, TimeSpan timeout, CancellationToken cancellationToken = default)
+    public IReadOnlyList<LinkData> CaptureAll(
+        AdapterInfo adapter,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default,
+        Action<LinkData>? onNeighbourFound = null)
     {
         ArgumentNullException.ThrowIfNull(adapter);
 
@@ -355,6 +359,7 @@ public sealed class CaptureService : ICaptureService
                     {
                         PopulateLocalFields(data, adapter);
                         results.Add(data);
+                        onNeighbourFound?.Invoke(data);
                     }
 
                     break; // Frame matched - no need to try remaining decoders.
