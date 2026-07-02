@@ -337,6 +337,25 @@ public sealed class MainForm : Form
         _captureCts = new CancellationTokenSource();
         var token = _captureCts.Token;
 
+        // Progress<T> captures the UI SynchronizationContext at creation, so the
+        // handler below always runs on the UI thread even though CaptureAll's
+        // callback fires from the background capture thread. This lets results
+        // appear the instant each neighbour is decoded, instead of only after
+        // the full listen window closes - the window still runs its course so
+        // additional switches on the same segment can also be caught.
+        var liveNeighbours = new List<LinkData>();
+        IProgress<LinkData> progress = new Progress<LinkData>(data =>
+        {
+            liveNeighbours.Add(data);
+            _lastReport = BuildMultiNeighbourReport(liveNeighbours);
+            _resultsBox.Text = _lastReport;
+            _saveButton.Enabled = true;
+            _copyButton.Enabled = true;
+            _statusLabel.Text = liveNeighbours.Count == 1
+                ? "Found 1 neighbour - still listening for more (up to 60s total)..."
+                : $"Found {liveNeighbours.Count} neighbours - still listening for more (up to 60s total)...";
+        });
+
         try
         {
             IReadOnlyList<LinkData>? neighbours = null;
@@ -344,12 +363,13 @@ public sealed class MainForm : Form
             do
             {
                 attempt++;
+                liveNeighbours.Clear();
                 _statusLabel.Text = keepListening && attempt > 1
                     ? $"Listening for all CDP/LLDP neighbours (attempt {attempt}, up to 60s)..."
                     : "Listening for all CDP/LLDP neighbours (up to 60s)...";
 
                 neighbours = await Task.Run(
-                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(60), token),
+                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(60), token, progress.Report),
                     token);
 
                 if (neighbours.Count == 0 && keepListening && !token.IsCancellationRequested)
