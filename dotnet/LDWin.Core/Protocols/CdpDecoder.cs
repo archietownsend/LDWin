@@ -174,6 +174,13 @@ public sealed class CdpDecoder : ILinkDecoder
                 offset += tlvLength;
             }
 
+            // Checksum is informational only: some captures include Ethernet
+            // padding past the CDP payload, which would make a strict
+            // byte-range guess unreliable, so a mismatch is surfaced rather
+            // than treated as a reason to discard an otherwise well-formed frame.
+            bool checksumValid = VerifyChecksum(frame, cdpHeaderOffset, offset - cdpHeaderOffset);
+            link.RawTlvs.Add(checksumValid ? "Checksum: OK" : "Checksum: mismatch (frame may be corrupt)");
+
             if (!link.HasNeighbourInfo)
             {
                 return false;
@@ -281,6 +288,42 @@ public sealed class CdpDecoder : ILinkDecoder
         }
 
         return firstAny ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Verifies the standard 16-bit ones'-complement Internet checksum (the same
+    /// algorithm IP/ICMP/TCP use) that CDP carries in its header. The checksum is
+    /// computed over the CDP header + TLVs as received (checksum field included,
+    /// unmodified); a valid frame sums to 0xFFFF.
+    /// </summary>
+    private static bool VerifyChecksum(byte[] frame, int offset, int length)
+    {
+        if (length <= 0)
+        {
+            return false;
+        }
+
+        long sum = 0;
+        int end = offset + length;
+        int i = offset;
+        while (i + 1 < end)
+        {
+            sum += (frame[i] << 8) | frame[i + 1];
+            i += 2;
+        }
+
+        if (i < end)
+        {
+            // Odd trailing byte: padded with a zero low byte.
+            sum += frame[i] << 8;
+        }
+
+        while ((sum >> 16) != 0)
+        {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+
+        return sum == 0xFFFF;
     }
 
     private static string DecodeCapabilities(int bitmap)

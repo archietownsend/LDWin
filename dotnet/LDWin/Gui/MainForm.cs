@@ -33,6 +33,10 @@ public sealed class MainForm : Form
     private CancellationTokenSource? _captureCts;
     private string? _lastReport;
 
+    // How long a single listen attempt runs before giving up (or retrying, if
+    // "keep listening" is checked).
+    private const int ListenSeconds = 60;
+
     // Path to the settings file for persisting the last selected adapter.
     private static readonly string SettingsDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LDWin");
@@ -178,7 +182,6 @@ public sealed class MainForm : Form
         }
         else
         {
-            // Feature 5: show Npcap version in title bar when available.
             var version = _npcap.GetInstalledVersion();
             if (!string.IsNullOrWhiteSpace(version))
             {
@@ -205,15 +208,16 @@ public sealed class MainForm : Form
                 _adapterCombo.Items.Add(adapter);
             }
 
-            // Feature 3: restore previously selected adapter.
-            var saved = LoadSavedAdapterDescription();
+            // Restore the previously selected adapter, keyed by its stable Npcap
+            // device name rather than the (possibly duplicated) description.
+            var saved = LoadSavedAdapterName();
             bool restored = false;
             if (!string.IsNullOrEmpty(saved))
             {
                 for (int i = 0; i < _adapterCombo.Items.Count; i++)
                 {
                     if (_adapterCombo.Items[i] is AdapterInfo ai &&
-                        string.Equals(ai.Description, saved, StringComparison.OrdinalIgnoreCase))
+                        string.Equals(ai.Name, saved, StringComparison.OrdinalIgnoreCase))
                     {
                         _adapterCombo.SelectedIndex = i;
                         restored = true;
@@ -243,18 +247,17 @@ public sealed class MainForm : Form
 
     private void OnAdapterSelectionChanged(object? sender, EventArgs e)
     {
-        // Feature 3: persist whenever the selection changes.
         if (_adapterCombo.SelectedItem is AdapterInfo ai)
         {
-            SaveAdapterDescription(ai.Description);
+            SaveAdapterName(ai.Name);
         }
     }
 
     // -------------------------------------------------------------------------
-    // Settings persistence (Feature 3)
+    // Settings persistence
     // -------------------------------------------------------------------------
 
-    private static string? LoadSavedAdapterDescription()
+    private static string? LoadSavedAdapterName()
     {
         try
         {
@@ -271,12 +274,12 @@ public sealed class MainForm : Form
         return null;
     }
 
-    private static void SaveAdapterDescription(string description)
+    private static void SaveAdapterName(string name)
     {
         try
         {
             Directory.CreateDirectory(SettingsDir);
-            File.WriteAllText(SettingsFile, description);
+            File.WriteAllText(SettingsFile, name);
         }
         catch
         {
@@ -285,14 +288,13 @@ public sealed class MainForm : Form
     }
 
     // -------------------------------------------------------------------------
-    // Get / Stop button (Features 1, 2, 4)
+    // Get / Stop button
     // -------------------------------------------------------------------------
 
     private void OnGetOrStopClick(object? sender, EventArgs e)
     {
         if (_getButton.Text == "Stop")
         {
-            // Feature 4: cancel the running capture/retry loop.
             try
             {
                 _captureCts?.Cancel();
@@ -320,8 +322,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        // Feature 3: persist the adapter at capture start.
-        SaveAdapterDescription(adapter.Description);
+        SaveAdapterName(adapter.Name);
 
         // Switch button to "Stop" and disable Save/Copy while running.
         _getButton.Text = "Stop";
@@ -352,8 +353,8 @@ public sealed class MainForm : Form
             _saveButton.Enabled = true;
             _copyButton.Enabled = true;
             _statusLabel.Text = liveNeighbours.Count == 1
-                ? "Found 1 neighbour - still listening for more (up to 60s total)..."
-                : $"Found {liveNeighbours.Count} neighbours - still listening for more (up to 60s total)...";
+                ? $"Found 1 neighbour - still listening for more (up to {ListenSeconds}s total)..."
+                : $"Found {liveNeighbours.Count} neighbours - still listening for more (up to {ListenSeconds}s total)...";
         });
 
         try
@@ -365,11 +366,11 @@ public sealed class MainForm : Form
                 attempt++;
                 liveNeighbours.Clear();
                 _statusLabel.Text = keepListening && attempt > 1
-                    ? $"Listening for all CDP/LLDP neighbours (attempt {attempt}, up to 60s)..."
-                    : "Listening for all CDP/LLDP neighbours (up to 60s)...";
+                    ? $"Listening for all CDP/LLDP neighbours (attempt {attempt}, up to {ListenSeconds}s)..."
+                    : $"Listening for all CDP/LLDP neighbours (up to {ListenSeconds}s)...";
 
                 neighbours = await Task.Run(
-                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(60), token, progress.Report),
+                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(ListenSeconds), token, progress.Report),
                     token);
 
                 if (neighbours.Count == 0 && keepListening && !token.IsCancellationRequested)
@@ -422,7 +423,7 @@ public sealed class MainForm : Form
     }
 
     // -------------------------------------------------------------------------
-    // Feature 2: raw TLV section + multi-neighbour display
+    // Multi-neighbour report (with raw TLV section per neighbour)
     // -------------------------------------------------------------------------
 
     private static string BuildMultiNeighbourReport(IReadOnlyList<LinkData> neighbours)
@@ -501,7 +502,7 @@ public sealed class MainForm : Form
     }
 
     // -------------------------------------------------------------------------
-    // Feature 1: Copy button
+    // Copy button
     // -------------------------------------------------------------------------
 
     private void OnCopyClick(object? sender, EventArgs e)
