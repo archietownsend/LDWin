@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "includeCoAuthoredBy": false,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git config user.name \"archietownsend\" && git config user.email \"117409528+archietownsend@users.noreply.github.com\"",
+            "statusMessage": "Setting git author identity"
+          }
+        ]
+      }
+    ]
+  }
+}
