@@ -13,6 +13,12 @@ namespace LDWin.Capture;
 /// Enumerates capture-capable adapters and listens on a chosen adapter for the
 /// first CDP or LLDP frame, decoding it via the registered
 /// <see cref="ILinkDecoder"/> implementations.
+///
+/// CDP/LLDP cannot be received over Wi-Fi: a switch sends these frames only to
+/// whatever is directly plugged into its port - the access point, not a
+/// wireless client - and access points do not relay CDP's/LLDP's multicast
+/// discovery frames over the air. <see cref="GetWifiInfo"/> exposes the
+/// closest available substitute (the current AP association) instead.
 /// </summary>
 public sealed class CaptureService : ICaptureService
 {
@@ -24,16 +30,25 @@ public sealed class CaptureService : ICaptureService
     private const int ReadTimeoutMs = 1000;
 
     private readonly IReadOnlyList<ILinkDecoder> _decoders;
+    private readonly IWifiInfoProvider _wifiInfo;
 
     public CaptureService(IEnumerable<ILinkDecoder> decoders)
+        : this(decoders, new WifiInfoProvider())
+    {
+    }
+
+    public CaptureService(IEnumerable<ILinkDecoder> decoders, IWifiInfoProvider wifiInfo)
     {
         ArgumentNullException.ThrowIfNull(decoders);
+        ArgumentNullException.ThrowIfNull(wifiInfo);
         _decoders = decoders.ToList();
+        _wifiInfo = wifiInfo;
     }
 
     /// <inheritdoc />
     public IReadOnlyList<AdapterInfo> GetAdapters()
     {
+        var usableTypes = GetUsableInterfaceTypes();
         var adapters = new List<AdapterInfo>();
 
         // CaptureDeviceList.Instance is a live, refreshing snapshot of the
@@ -78,12 +93,18 @@ public sealed class CaptureService : ICaptureService
                     description = device.Description ?? "";
                 }
 
+                var guid = ExtractGuid(device.Name);
+                bool isWireless = guid is not null
+                    && usableTypes.TryGetValue(guid, out var type)
+                    && type == NetworkInterfaceType.Wireless80211;
+
                 adapters.Add(new AdapterInfo
                 {
                     Name = device.Name,
                     Description = description,
                     IpAddress = ipAddress,
                     MacAddress = macAddress,
+                    IsWireless = isWireless,
                 });
             }
             catch
@@ -105,14 +126,13 @@ public sealed class CaptureService : ICaptureService
         // WAN-miniport / Wi-Fi-Direct pseudo-adapters, Bluetooth PAN and the Npcap
         // loopback adapter. Filter down to interfaces Windows reports as actually
         // up and physical-ish, matching on the {GUID} embedded in the device name.
-        var usable = GetUsableInterfaceGuids();
-        if (usable.Count > 0)
+        if (usableTypes.Count > 0)
         {
             var filtered = adapters
                 .Where(a =>
                 {
                     var guid = ExtractGuid(a.Name);
-                    return guid is not null && usable.Contains(guid);
+                    return guid is not null && usableTypes.ContainsKey(guid);
                 })
                 .ToList();
 
@@ -128,12 +148,13 @@ public sealed class CaptureService : ICaptureService
     }
 
     /// <summary>
-    /// GUIDs (upper-case, no braces) of network interfaces that are operationally up
-    /// and not loopback/tunnel - i.e. the adapters worth listening on.
+    /// Network interface types, keyed by GUID (upper-case, no braces), for
+    /// interfaces that are operationally up and not loopback/tunnel - i.e. the
+    /// adapters worth listening on. Also used to tag Wi-Fi adapters.
     /// </summary>
-    private static HashSet<string> GetUsableInterfaceGuids()
+    private static Dictionary<string, NetworkInterfaceType> GetUsableInterfaceTypes()
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, NetworkInterfaceType>(StringComparer.OrdinalIgnoreCase);
         try
         {
             foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
@@ -153,7 +174,7 @@ public sealed class CaptureService : ICaptureService
                     var id = nic.Id?.Trim('{', '}');
                     if (!string.IsNullOrEmpty(id))
                     {
-                        set.Add(id!.ToUpperInvariant());
+                        map[id!.ToUpperInvariant()] = nic.NetworkInterfaceType;
                     }
                 }
                 catch
@@ -164,11 +185,37 @@ public sealed class CaptureService : ICaptureService
         }
         catch
         {
-            // If enumeration fails entirely, return an empty set so GetAdapters
+            // If enumeration fails entirely, return an empty map so GetAdapters
             // falls back to showing every Npcap device unfiltered.
         }
 
-        return set;
+        return map;
+    }
+
+    /// <inheritdoc />
+    public WifiInfo? GetWifiInfo(AdapterInfo adapter)
+    {
+        ArgumentNullException.ThrowIfNull(adapter);
+
+        if (!adapter.IsWireless)
+        {
+            return null;
+        }
+
+        var guidText = ExtractGuid(adapter.Name);
+        if (guidText is null || !Guid.TryParse(guidText, out var guid))
+        {
+            return null;
+        }
+
+        try
+        {
+            return _wifiInfo.GetCurrentConnection(guid);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Extracts the GUID from an Npcap device name like \Device\NPF_{GUID}.</summary>

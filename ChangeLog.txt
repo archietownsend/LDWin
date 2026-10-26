@@ -1,3 +1,16 @@
+Release 3.0.6 - 26 Oct 2026
+---------------------------
+* Wi-Fi adapters are now detected and clearly labelled "(Wi-Fi)" in the Network
+  Connection drop-down
+* Selecting a Wi-Fi adapter no longer wastes a full 60-second listen window.
+  CDP/LLDP cannot physically be received over Wi-Fi - a switch sends these
+  frames only to whatever is directly plugged into its port (the access
+  point, not your laptop), and access points do not relay them over the air.
+  LDWin now explains this immediately and, where available, shows the current
+  Wi-Fi connection's SSID, access point (BSSID), signal quality and link speed
+  instead
+
+
 Release 3.0.5 - 02 Jul 2026
 ---------------------------
 * Performance: neighbours now appear in the results box the instant each one is

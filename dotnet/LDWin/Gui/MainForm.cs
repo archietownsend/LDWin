@@ -324,6 +324,12 @@ public sealed class MainForm : Form
 
         SaveAdapterName(adapter.Name);
 
+        if (adapter.IsWireless)
+        {
+            ShowWifiOnlyResult(adapter);
+            return;
+        }
+
         // Switch button to "Stop" and disable Save/Copy while running.
         _getButton.Text = "Stop";
         _saveButton.Enabled = false;
@@ -420,6 +426,43 @@ public sealed class MainForm : Form
             _adapterCombo.Enabled = true;
             _keepListeningCheck.Enabled = true;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Wi-Fi: CDP/LLDP can't be received wirelessly - explain why and show
+    // the current AP association instead, rather than running a 60s capture
+    // that can never find anything.
+    // -------------------------------------------------------------------------
+
+    private void ShowWifiOnlyResult(AdapterInfo adapter)
+    {
+        var wifi = _capture.GetWifiInfo(adapter);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("CDP/LLDP cannot be received over Wi-Fi.");
+        sb.AppendLine();
+        sb.AppendLine("A switch sends CDP/LLDP only to whatever is directly plugged into its port -");
+        sb.AppendLine("the access point, not your laptop - and access points do not relay those");
+        sb.AppendLine("discovery frames over the air. Connect by Ethernet to see the switch and port");
+        sb.AppendLine("a cable is plugged into.");
+
+        if (wifi is not null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("-- Current Wi-Fi connection --");
+            sb.AppendLine($"SSID: {wifi.Ssid}");
+            sb.AppendLine($"Access point (BSSID): {wifi.Bssid}");
+            sb.AppendLine($"Signal quality: {wifi.SignalQualityPercent}%");
+            sb.AppendLine($"Link speed: {wifi.LinkSpeedMbps} Mbps");
+        }
+
+        _lastReport = sb.ToString();
+        _resultsBox.Text = _lastReport;
+        _saveButton.Enabled = true;
+        _copyButton.Enabled = true;
+        _statusLabel.Text = wifi is not null
+            ? "Wi-Fi selected - showing access point info (CDP/LLDP needs a wired connection)."
+            : "Wi-Fi selected - CDP/LLDP needs a wired connection to the switch.";
     }
 
     // -------------------------------------------------------------------------

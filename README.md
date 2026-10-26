@@ -49,6 +49,12 @@ install .NET — just install [Npcap] and run `LDWin.exe` as administrator.
 
 A valid TCP/IP address is not required to receive link information.
 
+> **Wi-Fi is not supported for link discovery.** A switch sends CDP/LLDP only to
+> whatever is directly plugged into its port - the access point, not your laptop -
+> and access points do not relay those announcements over the air. Selecting a
+> Wi-Fi adapter shows your current access point connection (SSID, BSSID, signal)
+> instead; for the switch and port a cable is plugged into, use a wired connection.
+
 ## A note on antivirus / Windows Defender
 
 Because LDWin captures network traffic, Windows Defender may occasionally false-flag it.

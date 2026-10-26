@@ -16,7 +16,16 @@ public sealed class AdapterInfo
     public string IpAddress { get; init; } = "";
     public string MacAddress { get; init; } = "";
 
+    /// <summary>
+    /// True if Windows reports this as an 802.11 (Wi-Fi) interface. CDP/LLDP
+    /// cannot be received over Wi-Fi - see <see cref="CaptureService"/>.
+    /// </summary>
+    public bool IsWireless { get; init; }
+
     /// <summary>Text shown in the adapter drop-down.</summary>
-    public override string ToString() =>
-        string.IsNullOrWhiteSpace(Description) ? Name : Description;
+    public override string ToString()
+    {
+        var label = string.IsNullOrWhiteSpace(Description) ? Name : Description;
+        return IsWireless ? $"{label} (Wi-Fi)" : label;
+    }
 }

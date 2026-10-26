@@ -29,4 +29,14 @@ public interface ICaptureService
         TimeSpan timeout,
         CancellationToken cancellationToken = default,
         Action<LinkData>? onNeighbourFound = null);
+
+    /// <summary>
+    /// Returns the current Wi-Fi association (SSID/BSSID/signal) for
+    /// <paramref name="adapter"/>, or <see langword="null"/> if the adapter
+    /// is not wireless, is not currently associated, or the info could not be
+    /// read. This is AP association info, not switch/port discovery data -
+    /// see the <see cref="CaptureService"/> remarks on why CDP/LLDP cannot
+    /// reach a wireless station.
+    /// </summary>
+    WifiInfo? GetWifiInfo(AdapterInfo adapter);
 }
