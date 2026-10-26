@@ -53,17 +53,37 @@ jobs:
           Compress-Archive -Path publish\* -DestinationPath LDWin-win-x64.zip -Force
           Write-Host "Packaged LDWin-win-x64.zip ($((Get-Item 'LDWin-win-x64.zip').Length) bytes)"
 
+      - name: Build installer
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup was not found" }
+          $version = $env:TAG.TrimStart('v')
+          & $iscc "/DAppVersion=$version" installer\LDWin.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+          if (-not (Test-Path "installer\Output\LDWin-Setup.exe")) { throw "LDWin-Setup.exe was not produced" }
+          Write-Host "Built LDWin-Setup.exe ($((Get-Item 'installer\Output\LDWin-Setup.exe').Length) bytes)"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: LDWin ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
-          files: LDWin-win-x64.zip
+          files: |
+            installer/Output/LDWin-Setup.exe
+            LDWin-win-x64.zip
           body: |
             LDWin — Link Discovery for Windows (CDP/LLDP), Windows 11 / Core Isolation compatible.
 
-            **Download `LDWin-win-x64.zip` below, extract it, and run `LDWin.exe`.** It is a
-            self-contained build: no .NET or capture driver to install. Run it as
-            administrator on Windows 10 version 2004 or later, or Windows 11.
+            **Download and run `LDWin-Setup.exe` below** to install LDWin like any other
+            program (Start menu shortcut, uninstall from Settings > Apps). Prefer no
+            install? `LDWin-win-x64.zip` is a portable copy: extract it and run `LDWin.exe`.
+
+            Self-contained: no .NET or capture driver to install. Needs Windows 10 version
+            2004 or later, or Windows 11, and administrator rights.
 

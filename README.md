@@ -28,9 +28,16 @@ Memory Integrity (HVCI) enabled. It captures with Windows' built-in Packet Monit
 
 ## Download
 
-Grab the latest **`LDWin-win-x64.zip`** from the [Releases page](../../releases/latest),
-extract it, and run **`LDWin.exe`**. It is a self-contained build, so you do not need to
-install .NET or a capture driver — just run `LDWin.exe` as administrator.
+Grab the latest **`LDWin-Setup.exe`** from the [Releases page](../../releases/latest) and
+run it. LDWin installs like any other program: it appears in the Start menu (with an
+optional desktop shortcut) and can be removed from **Settings → Apps**. Installing a newer
+version over an old one upgrades it in place.
+
+Prefer not to install? **`LDWin-win-x64.zip`** on the same page is a portable copy: extract
+it and run `LDWin.exe` as administrator.
+
+Either way it is a self-contained build, so you do not need to install .NET or a capture
+driver.
 
 ## How to use
 

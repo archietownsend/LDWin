@@ -5,7 +5,7 @@ name: Build LDWin (.NET)
 # in-process, and uploads it as a workflow artifact for verification.
 #
 # Distribution is handled separately by release.yml, which publishes a GitHub
-# Release with the exe attached. This workflow does not commit binaries.
+# Release with the installer and zip attached. This workflow does not commit binaries.
 #
 # Run from the Actions tab ("Run workflow").
 
@@ -43,6 +43,26 @@ jobs:
             -o publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
           if (-not (Test-Path "publish\LDWin.exe")) { throw "LDWin.exe was not produced" }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup was not found" }
+          [xml]$project = Get-Content dotnet/LDWin/LDWin.csproj
+          $version = ($project.Project.PropertyGroup.Version | Where-Object { $_ })[0]
+          & $iscc "/DAppVersion=$version" installer\LDWin.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+          if (-not (Test-Path "installer\Output\LDWin-Setup.exe")) { throw "LDWin-Setup.exe was not produced" }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LDWin-Setup
+          path: installer/Output/LDWin-Setup.exe
+          if-no-files-found: error
 
       - name: Upload LDWin artifact
         uses: actions/upload-artifact@v4
