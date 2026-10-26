@@ -15,7 +15,7 @@ public sealed class LinkData
     public string Protocol { get; set; } = "";
 
     // ---- Local adapter (filled in by the capture engine) ----
-    public string AdapterName { get; set; } = "";          // Npcap device name, e.g. \Device\NPF_{GUID}
+    public string AdapterName { get; set; } = "";          // Windows interface ID, e.g. {GUID}
     public string AdapterDescription { get; set; } = "";   // friendly description
     public string LocalIpAddress { get; set; } = "";
     public string LocalMacAddress { get; set; } = "";

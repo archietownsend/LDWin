@@ -1,5 +1,13 @@
-Release 3.0.7 - 26 Oct 2026
+Release 3.1.0 - 26 Oct 2026
 ---------------------------
+* Npcap is no longer required. LDWin now captures with Windows Packet Monitor
+  (pktmon), which is built into Windows 10 version 2004 and later and Windows 11,
+  so there is no capture driver to install. Neighbours still appear the moment
+  their announcement arrives: pktmon logs only LLDP/CDP frames on the selected
+  adapter, and LDWin reads them live from its event stream
+* If LDWin is closed mid-capture, the next capture stops the leftover Packet
+  Monitor session instead of failing to start
+* The window title no longer shows an Npcap version
 * The window and taskbar now show the LDWin icon instead of the generic Windows
   application icon
 * Wi-Fi: when the access point details cannot be read, LDWin now says why

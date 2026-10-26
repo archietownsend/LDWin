@@ -2,12 +2,12 @@ namespace LDWin.Capture;
 
 /// <summary>
 /// A selectable network adapter, as presented in the GUI drop-down.
-/// <see cref="Name"/> is the Npcap device name used to open the capture;
-/// the remaining fields are for display and for stamping into the result.
+/// <see cref="Name"/> is the Windows interface ID; the remaining fields are
+/// for display, for matching the adapter in pktmon, and for the result.
 /// </summary>
 public sealed class AdapterInfo
 {
-    /// <summary>Npcap device name, e.g. <c>\Device\NPF_{GUID}</c>.</summary>
+    /// <summary>Windows interface ID, e.g. <c>{GUID}</c>.</summary>
     public required string Name { get; init; }
 
     /// <summary>Friendly description shown to the user.</summary>

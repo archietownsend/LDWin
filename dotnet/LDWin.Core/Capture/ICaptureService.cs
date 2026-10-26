@@ -4,11 +4,11 @@ namespace LDWin.Capture;
 
 /// <summary>
 /// Enumerates capture-capable adapters and listens on one for the first CDP or
-/// LLDP announcement. Implemented over SharpPcap/Npcap.
+/// LLDP announcement. Implemented over Windows Packet Monitor (pktmon).
 /// </summary>
 public interface ICaptureService
 {
-    /// <summary>All adapters Npcap can capture on.</summary>
+    /// <summary>Network adapters that are up and can carry CDP/LLDP.</summary>
     IReadOnlyList<AdapterInfo> GetAdapters();
 
     /// <summary>

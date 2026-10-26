@@ -1,8 +1,8 @@
 name: Build LDWin (.NET)
 
 # CI build of the C# / WinForms LDWin. Produces a single self-contained LDWin.exe
-# that captures and decodes CDP/LLDP in-process via SharpPcap/Npcap (no bundled
-# tcpdump.exe) and uploads it as a workflow artifact for verification.
+# that captures CDP/LLDP with Windows Packet Monitor (pktmon) and decodes it
+# in-process, and uploads it as a workflow artifact for verification.
 #
 # Distribution is handled separately by release.yml, which publishes a GitHub
 # Release with the exe attached. This workflow does not commit binaries.

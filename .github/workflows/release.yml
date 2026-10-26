@@ -64,8 +64,8 @@ jobs:
             LDWin — Link Discovery for Windows (CDP/LLDP), Windows 11 / Core Isolation compatible.
 
             **Download `LDWin-win-x64.zip` below, extract it, and run `LDWin.exe`.** It is a
-            self-contained build (no .NET install needed). You also need
-            [Npcap](https://npcap.com/) installed, and to run LDWin as administrator.
+            self-contained build: no .NET or capture driver to install. Run it as
+            administrator on Windows 10 version 2004 or later, or Windows 11.
 
             > Note: the build is currently unsigned, so Windows SmartScreen may warn on first
             > run ("More info → Run anyway"). A trusted signature is planned.

@@ -7,8 +7,9 @@ LDWin tells you **which switch and switch port a network cable is plugged into**
 listening for the link-discovery announcements (CDP / LLDP) that the directly-connected
 switch broadcasts. No more tracing cables under floors or guessing at patch panels.
 
-This is an updated fork that works on Windows 11 with Core Isolation > Memory
-Integrity (HVCI) enabled and rewritten in C# and uses Npcap.
+This is an updated fork, rewritten in C#, that works on Windows 11 with Core Isolation >
+Memory Integrity (HVCI) enabled. It captures with Windows' built-in Packet Monitor
+(pktmon), so there is no capture driver to install.
 
 <p align="center">
 <img src="LDWin.png" width="560" alt="LDWin - Link Discovery for Windows"/>
@@ -21,18 +22,15 @@ Integrity (HVCI) enabled and rewritten in C# and uses Npcap.
 
 ## Requirements
 
-- **Windows 10 / 11**
-- **[Npcap]** installed — the free installer from <https://npcap.com/> is fine. LDWin
-  detects whether it is present and points you to the download if it is missing.
-  Installing in "WinPcap API-compatible Mode" is optional; LDWin finds Npcap's libraries
-  automatically.
+- **Windows 10 version 2004 or later, or Windows 11** — these include Packet Monitor
+  (`pktmon.exe`), which LDWin uses to capture. Nothing else needs installing.
 - **Administrative rights** — packet capture requires elevation (LDWin requests it).
 
 ## Download
 
 Grab the latest **`LDWin-win-x64.zip`** from the [Releases page](../../releases/latest),
 extract it, and run **`LDWin.exe`**. It is a self-contained build, so you do not need to
-install .NET — just install [Npcap] and run `LDWin.exe` as administrator.
+install .NET or a capture driver — just run `LDWin.exe` as administrator.
 
 > The build is currently unsigned, so Windows SmartScreen may warn on first run — choose
 > **More info → Run anyway** (or right-click the exe → **Properties → Unblock**). A
@@ -58,13 +56,15 @@ A valid TCP/IP address is not required to receive link information.
 ## A note on antivirus / Windows Defender
 
 Because LDWin captures network traffic, Windows Defender may occasionally false-flag it.
-**It is not malware.** It captures in process and never drops or executes a separate
-sniffer binary, and builds carry proper version/publisher metadata.
+**It is not malware.** It captures with Windows' own Packet Monitor, never drops a
+separate sniffer binary, and builds carry proper version/publisher metadata.
+
+While a capture runs, LDWin takes over Packet Monitor, which allows one capture at a
+time system-wide: it replaces any `pktmon` filters and clears them afterwards.
 
 ### Credits
 
 LDWin was originally created by **Chris Hall** (2010–2014). Original repository: <https://github.com/chall32/LDWin>
 
-[Npcap]: https://npcap.com/
 [CDP]: http://en.wikipedia.org/wiki/Cisco_Discovery_Protocol
 [LLDP]: http://en.wikipedia.org/wiki/Link_Layer_Discovery_Protocol

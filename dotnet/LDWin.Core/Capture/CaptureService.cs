@@ -1,18 +1,17 @@
-using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using LDWin.Models;
 using LDWin.Protocols;
-using SharpPcap;
-using SharpPcap.LibPcap;
+using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Session;
 
 namespace LDWin.Capture;
 
 /// <summary>
-/// SharpPcap/Npcap-backed implementation of <see cref="ICaptureService"/>.
-/// Enumerates capture-capable adapters and listens on a chosen adapter for the
-/// first CDP or LLDP frame, decoding it via the registered
-/// <see cref="ILinkDecoder"/> implementations.
+/// <see cref="ICaptureService"/> built on Windows Packet Monitor (pktmon), so
+/// no capture driver has to be installed. pktmon is configured to log only
+/// LLDP/CDP frames on the chosen adapter, and its packet events are read live
+/// from ETW, so each neighbour is decoded the moment its announcement arrives.
 ///
 /// CDP/LLDP cannot be received over Wi-Fi: a switch sends these frames only to
 /// whatever is directly plugged into its port - the access point, not a
@@ -22,12 +21,21 @@ namespace LDWin.Capture;
 /// </summary>
 public sealed class CaptureService : ICaptureService
 {
-    // BPF filter: LLDP uses EtherType 0x88cc; CDP is delivered to the
-    // Cisco multicast MAC 01:00:0c:cc:cc:cc (SNAP-encapsulated, no fixed
-    // EtherType), so we match on the destination MAC as well.
-    private const string CdpLldpFilter = "ether proto 0x88cc or ether dst 01:00:0c:cc:cc:cc";
+    private const string EtwSessionName = "LDWin-PktMon";
+    private const string LldpFilterName = "LDWin-LLDP";
+    private const string CdpFilterName = "LDWin-CDP";
+    private const string LldpEtherType = "35020"; // 0x88CC
+    private const string CdpMulticastMac = "01-00-0C-CC-CC-CC";
+    private const string CaptureFileSizeMb = "8";
 
-    private const int ReadTimeoutMs = 1000;
+    // pktmon is system-wide: one capture and one filter list. This marker
+    // records that LDWin has a capture running, so if LDWin is killed mid-
+    // capture the next run can stop it rather than fail to start.
+    private static readonly string ActiveMarker = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "LDWin", "pktmon-capture-active");
+
+    private static readonly string CaptureFile = Path.Combine(Path.GetTempPath(), "LDWin-pktmon.etl");
 
     private readonly IReadOnlyList<ILinkDecoder> _decoders;
     private readonly IWifiInfoProvider _wifiInfo;
@@ -48,148 +56,41 @@ public sealed class CaptureService : ICaptureService
     /// <inheritdoc />
     public IReadOnlyList<AdapterInfo> GetAdapters()
     {
-        var usableTypes = GetUsableInterfaceTypes();
         var adapters = new List<AdapterInfo>();
 
-        // CaptureDeviceList.Instance is a live, refreshing snapshot of the
-        // adapters Npcap can capture on.
-        foreach (var device in CaptureDeviceList.Instance)
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             try
             {
-                string description = "";
-                string ipAddress = "";
-                string macAddress = "";
-
-                if (device is LibPcapLiveDevice liveDevice)
+                if (nic.OperationalStatus != OperationalStatus.Up ||
+                    nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
                 {
-                    // Prefer the friendly name from the interface, falling back
-                    // to the raw device description.
-                    var friendly = liveDevice.Interface?.FriendlyName;
-                    description = !string.IsNullOrWhiteSpace(friendly)
-                        ? friendly!
-                        : liveDevice.Description ?? "";
-
-                    if (liveDevice.Interface?.Addresses is { } addresses)
-                    {
-                        foreach (var addr in addresses)
-                        {
-                            var sockAddr = addr.Addr?.ipAddress;
-                            if (sockAddr is { AddressFamily: AddressFamily.InterNetwork })
-                            {
-                                ipAddress = sockAddr.ToString();
-                                break;
-                            }
-                        }
-                    }
-
-                    if (liveDevice.Interface?.MacAddress is { } mac)
-                    {
-                        macAddress = FormatMac(mac);
-                    }
-                }
-                else
-                {
-                    description = device.Description ?? "";
+                    continue;
                 }
 
-                var guid = ExtractGuid(device.Name);
-                bool isWireless = guid is not null
-                    && usableTypes.TryGetValue(guid, out var type)
-                    && type == NetworkInterfaceType.Wireless80211;
+                // pktmon components are matched to adapters by MAC address.
+                var mac = nic.GetPhysicalAddress().GetAddressBytes();
+                if (mac.Length != 6)
+                {
+                    continue;
+                }
 
                 adapters.Add(new AdapterInfo
                 {
-                    Name = device.Name,
-                    Description = description,
-                    IpAddress = ipAddress,
-                    MacAddress = macAddress,
-                    IsWireless = isWireless,
+                    Name = nic.Id,
+                    Description = nic.Name,
+                    IpAddress = FirstIpv4Address(nic),
+                    MacAddress = string.Join(":", mac.Select(b => b.ToString("X2"))),
+                    IsWireless = nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211,
                 });
             }
             catch
             {
-                // A single misbehaving adapter must not break enumeration; fall
-                // back to just the device name so it remains selectable.
-                try
-                {
-                    adapters.Add(new AdapterInfo { Name = device.Name });
-                }
-                catch
-                {
-                    // Even the name was unavailable - skip this device entirely.
-                }
-            }
-        }
-
-        // Npcap enumerates every capture-capable interface, including virtual /
-        // WAN-miniport / Wi-Fi-Direct pseudo-adapters, Bluetooth PAN and the Npcap
-        // loopback adapter. Filter down to interfaces Windows reports as actually
-        // up and physical-ish, matching on the {GUID} embedded in the device name.
-        if (usableTypes.Count > 0)
-        {
-            var filtered = adapters
-                .Where(a =>
-                {
-                    var guid = ExtractGuid(a.Name);
-                    return guid is not null && usableTypes.ContainsKey(guid);
-                })
-                .ToList();
-
-            // Only apply the filter if it leaves something selectable; otherwise
-            // fall back to the full list rather than show an empty drop-down.
-            if (filtered.Count > 0)
-            {
-                return filtered;
+                // Skip a single problematic interface.
             }
         }
 
         return adapters;
-    }
-
-    /// <summary>
-    /// Network interface types, keyed by GUID (upper-case, no braces), for
-    /// interfaces that are operationally up and not loopback/tunnel - i.e. the
-    /// adapters worth listening on. Also used to tag Wi-Fi adapters.
-    /// </summary>
-    private static Dictionary<string, NetworkInterfaceType> GetUsableInterfaceTypes()
-    {
-        var map = new Dictionary<string, NetworkInterfaceType>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                try
-                {
-                    if (nic.OperationalStatus != OperationalStatus.Up)
-                    {
-                        continue;
-                    }
-
-                    if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
-                    {
-                        continue;
-                    }
-
-                    var id = nic.Id?.Trim('{', '}');
-                    if (!string.IsNullOrEmpty(id))
-                    {
-                        map[id!.ToUpperInvariant()] = nic.NetworkInterfaceType;
-                    }
-                }
-                catch
-                {
-                    // Skip a single problematic interface.
-                }
-            }
-        }
-        catch
-        {
-            // If enumeration fails entirely, return an empty map so GetAdapters
-            // falls back to showing every Npcap device unfiltered.
-        }
-
-        return map;
     }
 
     /// <inheritdoc />
@@ -221,19 +122,6 @@ public sealed class CaptureService : ICaptureService
         }
     }
 
-    /// <summary>Extracts the GUID from an Npcap device name like \Device\NPF_{GUID}.</summary>
-    private static string? ExtractGuid(string deviceName)
-    {
-        int open = deviceName.IndexOf('{');
-        int close = deviceName.IndexOf('}');
-        if (open >= 0 && close > open)
-        {
-            return deviceName.Substring(open + 1, close - open - 1).ToUpperInvariant();
-        }
-
-        return null;
-    }
-
     /// <inheritdoc />
     public IReadOnlyList<LinkData> CaptureAll(
         AdapterInfo adapter,
@@ -243,96 +131,205 @@ public sealed class CaptureService : ICaptureService
     {
         ArgumentNullException.ThrowIfNull(adapter);
 
-        var device = FindDevice(adapter.Name)
-            ?? throw new InvalidOperationException(
-                $"Capture adapter '{adapter.Name}' was not found. It may have been removed " +
-                "or Npcap may not be installed.");
+        if (!PktMon.IsAvailable())
+        {
+            throw new InvalidOperationException(
+                "Windows Packet Monitor (pktmon.exe) was not found. It is built into " +
+                "Windows 10 version 2004 and later, and Windows 11.");
+        }
 
-        var deadline = Stopwatch.StartNew();
+        StopInterruptedCapture();
+
         var results = new List<LinkData>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        bool opened = false;
+        var sync = new object();
 
+        TraceEventSession? session = null;
+        Task? processing = null;
+        bool filtersSet = false;
+        bool started = false;
         try
         {
-            device.Open(new DeviceConfiguration
+            // Start listening before pktmon starts logging so no early frame is missed.
+            session = new TraceEventSession(EtwSessionName);
+            session.EnableProvider(PktMon.ProviderGuid, TraceEventLevel.Verbose, ulong.MaxValue);
+            session.Source.AllEvents += data =>
             {
-                Mode = DeviceModes.Promiscuous,
-                ReadTimeout = ReadTimeoutMs,
-            });
-            opened = true;
+                if (data.ProviderGuid != PktMon.ProviderGuid)
+                {
+                    return;
+                }
 
-            device.Filter = CdpLldpFilter;
+                var neighbour = Decode(data.EventData());
+                if (neighbour is null)
+                {
+                    return;
+                }
 
-            while (deadline.Elapsed < timeout)
+                // pktmon logs a packet once per component it passes through, so
+                // duplicates are expected here.
+                string key = $"{neighbour.Protocol}|{neighbour.DeviceId}|{neighbour.PortId}";
+                lock (sync)
+                {
+                    if (!seen.Add(key))
+                    {
+                        return;
+                    }
+
+                    PopulateLocalFields(neighbour, adapter);
+                    results.Add(neighbour);
+                }
+
+                onNeighbourFound?.Invoke(neighbour);
+            };
+
+            processing = Task.Factory.StartNew(
+                () => session.Source.Process(), TaskCreationOptions.LongRunning);
+
+            var componentIds = FindComponentIds(adapter);
+
+            PktMon.Run("filter", "remove");
+            filtersSet = true;
+            RunOrThrow("filter", "add", LldpFilterName, "-d", LldpEtherType);
+            RunOrThrow("filter", "add", CdpFilterName, "-m", CdpMulticastMac);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(ActiveMarker)!);
+            File.WriteAllText(ActiveMarker, "");
+
+            var start = new List<string> { "start", "--capture", "--comp" };
+            start.AddRange(componentIds);
+            start.AddRange(new[] { "--pkt-size", "0", "--file-name", CaptureFile, "--file-size", CaptureFileSizeMb });
+            var (exitCode, output) = PktMon.Run(start.ToArray());
+            if (exitCode != 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var status = device.GetNextPacket(out PacketCapture e);
-
-                if (status != GetPacketStatus.PacketRead)
-                {
-                    continue;
-                }
-
-                byte[] frame;
-                try
-                {
-                    frame = e.GetPacket().Data;
-                }
-                catch
-                {
-                    continue;
-                }
-
-                if (frame is not { Length: > 0 })
-                {
-                    continue;
-                }
-
-                foreach (var decoder in _decoders)
-                {
-                    LinkData? data;
-                    try
-                    {
-                        if (!decoder.TryDecode(frame, out data) || data is null)
-                        {
-                            continue;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-
-                    string key = $"{data.Protocol}|{data.DeviceId}|{data.PortId}";
-                    if (seen.Add(key))
-                    {
-                        PopulateLocalFields(data, adapter);
-                        results.Add(data);
-                        onNeighbourFound?.Invoke(data);
-                    }
-
-                    break; // Frame matched - no need to try remaining decoders.
-                }
+                throw new InvalidOperationException(
+                    $"Windows Packet Monitor could not start a capture:{Environment.NewLine}{output}" +
+                    $"{Environment.NewLine}{Environment.NewLine}If another Packet Monitor capture is " +
+                    "running, stop it with \"pktmon stop\" and try again.");
             }
 
-            return results;
+            started = true;
+
+            var signalled = WaitHandle.WaitAny(
+                new[] { cancellationToken.WaitHandle, ((IAsyncResult)processing).AsyncWaitHandle },
+                timeout);
+            if (signalled == 1)
+            {
+                processing.GetAwaiter().GetResult(); // surfaces the ETW failure, if any
+                throw new InvalidOperationException("The packet capture session ended unexpectedly.");
+            }
         }
         finally
         {
-            if (opened)
+            if (started)
+            {
+                TryRun("stop");
+            }
+
+            if (filtersSet)
+            {
+                TryRun("filter", "remove");
+            }
+
+            TryDelete(ActiveMarker);
+            session?.Dispose();
+            try { processing?.Wait(TimeSpan.FromSeconds(5)); } catch { /* already reported */ }
+            TryDelete(CaptureFile);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (sync)
+        {
+            return results.ToList();
+        }
+    }
+
+    private LinkData? Decode(byte[] eventData)
+    {
+        foreach (var frame in PktMonFrameExtractor.FindFrames(eventData))
+        {
+            foreach (var decoder in _decoders)
             {
                 try
                 {
-                    device.Close();
+                    if (decoder.TryDecode(frame, out var data) && data is not null)
+                    {
+                        return data;
+                    }
                 }
                 catch
                 {
-                    // Best-effort close; nothing actionable on failure.
+                    // A malformed frame must not stop the capture.
                 }
             }
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The pktmon component IDs for <paramref name="adapter"/>, or "nics" (every
+    /// network adapter) if it can't be matched by MAC address.
+    /// </summary>
+    private static IReadOnlyList<string> FindComponentIds(AdapterInfo adapter)
+    {
+        var (exitCode, output) = PktMon.Run("list");
+        if (exitCode == 0)
+        {
+            var ids = PktMon.ParseComponentIds(output, adapter.MacAddress);
+            if (ids.Count > 0)
+            {
+                return ids;
+            }
+        }
+
+        return new[] { "nics" };
+    }
+
+    private static void StopInterruptedCapture()
+    {
+        if (!File.Exists(ActiveMarker))
+        {
+            return;
+        }
+
+        TryRun("stop");
+        TryRun("filter", "remove");
+        TryDelete(ActiveMarker);
+    }
+
+    private static void RunOrThrow(params string[] arguments)
+    {
+        var (exitCode, output) = PktMon.Run(arguments);
+        if (exitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"pktmon {string.Join(' ', arguments)} failed:{Environment.NewLine}{output}");
+        }
+    }
+
+    private static void TryRun(params string[] arguments)
+    {
+        try { PktMon.Run(arguments); } catch { /* best-effort cleanup */ }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); } catch { /* best-effort cleanup */ }
+    }
+
+    private static string FirstIpv4Address(NetworkInterface nic)
+    {
+        foreach (var unicast in nic.GetIPProperties().UnicastAddresses)
+        {
+            if (unicast.Address.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return unicast.Address.ToString();
+            }
+        }
+
+        return "";
     }
 
     private static void PopulateLocalFields(LinkData data, AdapterInfo adapter)
@@ -343,21 +340,16 @@ public sealed class CaptureService : ICaptureService
         data.LocalMacAddress = adapter.MacAddress;
     }
 
-    private static ILiveDevice? FindDevice(string name)
+    /// <summary>Extracts the GUID from an adapter name like {GUID} or \Device\NPF_{GUID}.</summary>
+    private static string? ExtractGuid(string name)
     {
-        foreach (var device in CaptureDeviceList.Instance)
+        int open = name.IndexOf('{');
+        int close = name.IndexOf('}');
+        if (open >= 0 && close > open)
         {
-            if (string.Equals(device.Name, name, StringComparison.OrdinalIgnoreCase))
-            {
-                return device;
-            }
+            return name.Substring(open + 1, close - open - 1).ToUpperInvariant();
         }
 
         return null;
-    }
-
-    private static string FormatMac(PhysicalAddress mac)
-    {
-        return string.Join(":", mac.GetAddressBytes().Select(b => b.ToString("X2")));
     }
 }

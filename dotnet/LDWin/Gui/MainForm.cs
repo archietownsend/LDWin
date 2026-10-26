@@ -20,7 +20,6 @@ namespace LDWin.Gui;
 public sealed class MainForm : Form
 {
     private readonly ICaptureService _capture;
-    private readonly INpcapDetector _npcap;
 
     private readonly ComboBox _adapterCombo;
     private readonly Button _getButton;
@@ -45,7 +44,6 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        _npcap = new NpcapDetector();
         var decoders = new ILinkDecoder[] { new LldpDecoder(), new CdpDecoder() };
         _capture = new CaptureService(decoders);
 
@@ -173,28 +171,17 @@ public sealed class MainForm : Form
 
     private void OnFormLoad(object? sender, EventArgs e)
     {
-        if (!_npcap.IsInstalled())
+        if (!PktMon.IsAvailable())
         {
-            var result = MessageBox.Show(
-                "Npcap is required to capture CDP/LLDP packets but does not appear to be installed." +
+            MessageBox.Show(
+                "LDWin uses Windows Packet Monitor (pktmon.exe) to capture CDP/LLDP, " +
+                "but it was not found on this PC." +
                 Environment.NewLine + Environment.NewLine +
-                "Would you like to open the Npcap download page now?",
-                "Npcap not found",
-                MessageBoxButtons.YesNo,
+                "Packet Monitor is built into Windows 10 version 2004 and later, and " +
+                "Windows 11. Please update Windows and try again.",
+                "Packet Monitor not found",
+                MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
-
-            if (result == DialogResult.Yes)
-            {
-                OpenUrl(_npcap.DownloadUrl);
-            }
-        }
-        else
-        {
-            var version = _npcap.GetInstalledVersion();
-            if (!string.IsNullOrWhiteSpace(version))
-            {
-                Text = $"LDWin - Npcap {version}";
-            }
         }
 
         LoadAdapters();
@@ -216,8 +203,9 @@ public sealed class MainForm : Form
                 _adapterCombo.Items.Add(adapter);
             }
 
-            // Restore the previously selected adapter, keyed by its stable Npcap
-            // device name rather than the (possibly duplicated) description.
+            // Restore the previously selected adapter, keyed by its stable interface
+            // ID rather than the (possibly duplicated) description. EndsWith also
+            // matches the \Device\NPF_{GUID} names saved by Npcap-based versions.
             var saved = LoadSavedAdapterName();
             bool restored = false;
             if (!string.IsNullOrEmpty(saved))
@@ -225,7 +213,7 @@ public sealed class MainForm : Form
                 for (int i = 0; i < _adapterCombo.Items.Count; i++)
                 {
                     if (_adapterCombo.Items[i] is AdapterInfo ai &&
-                        string.Equals(ai.Name, saved, StringComparison.OrdinalIgnoreCase))
+                        saved.EndsWith(ai.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         _adapterCombo.SelectedIndex = i;
                         restored = true;
