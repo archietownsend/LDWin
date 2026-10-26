@@ -147,7 +147,7 @@ public sealed class CaptureService : ICaptureService
         TraceEventSession? session = null;
         Task? processing = null;
         bool filtersSet = false;
-        bool started = false;
+        bool startAttempted = false;
         try
         {
             // Start listening before pktmon starts logging so no early frame is missed.
@@ -199,16 +199,25 @@ public sealed class CaptureService : ICaptureService
             var start = new List<string> { "start", "--capture", "--comp" };
             start.AddRange(componentIds);
             start.AddRange(new[] { "--pkt-size", "0", "--file-name", CaptureFile, "--file-size", CaptureFileSizeMb });
+
+            // Set before starting: pktmon can begin capturing and still report an
+            // error, and a capture left running would block every later start.
+            startAttempted = true;
             var (exitCode, output) = PktMon.Run(start.ToArray());
             if (exitCode != 0)
             {
-                throw new InvalidOperationException(
-                    $"Windows Packet Monitor could not start a capture:{Environment.NewLine}{output}" +
-                    $"{Environment.NewLine}{Environment.NewLine}If another Packet Monitor capture is " +
-                    "running, stop it with \"pktmon stop\" and try again.");
+                // Most likely a capture was left running (by an earlier LDWin or
+                // another tool). Packet Monitor allows only one, so clear it and
+                // try once more.
+                TryRun("stop");
+                (exitCode, output) = PktMon.Run(start.ToArray());
             }
 
-            started = true;
+            if (exitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Windows Packet Monitor could not start a capture:{Environment.NewLine}{output}");
+            }
 
             var signalled = WaitHandle.WaitAny(
                 new[] { cancellationToken.WaitHandle, ((IAsyncResult)processing).AsyncWaitHandle },
@@ -221,7 +230,7 @@ public sealed class CaptureService : ICaptureService
         }
         finally
         {
-            if (started)
+            if (startAttempted)
             {
                 TryRun("stop");
             }

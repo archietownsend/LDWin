@@ -32,6 +32,7 @@ public sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _listenTimer;
 
     private CancellationTokenSource? _captureCts;
+    private Task? _captureWork;
     private string? _lastReport;
 
     // Listening state shown by the countdown; only touched on the UI thread.
@@ -400,9 +401,9 @@ public sealed class MainForm : Form
                 _attemptClock.Restart();
                 UpdateListeningStatus();
 
-                neighbours = await Task.Run(
-                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(ListenSeconds), token, progress.Report),
-                    token);
+                _captureWork = Task.Run(
+                    () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(ListenSeconds), token, progress.Report));
+                neighbours = await _captureWork;
 
                 if (neighbours.Count == 0 && keepListening && !token.IsCancellationRequested)
                 {
@@ -652,6 +653,17 @@ public sealed class MainForm : Form
         catch (ObjectDisposedException)
         {
             // Already disposed; nothing to cancel.
+        }
+
+        // Let the capture stop Packet Monitor before the process exits; otherwise
+        // the capture is left running and blocks the next start.
+        try
+        {
+            _captureWork?.Wait(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception)
+        {
+            // Cancellation or a capture error - cleanup has already run.
         }
 
         base.OnFormClosing(e);

@@ -8,6 +8,10 @@ Release 3.1.0 - 26 Oct 2026
 * If LDWin is closed mid-capture, the next capture stops the leftover Packet
   Monitor session instead of failing to start
 * The window title no longer shows an Npcap version
+* A Packet Monitor capture left running no longer blocks the next one with
+  "Packet Monitor is already started": LDWin always stops its capture when it
+  finishes or fails, waits for that cleanup when the window is closed, and clears
+  a leftover capture itself if it still finds one
 * While listening, the status line counts down the seconds left and a progress
   bar fills, so a quiet link no longer looks like LDWin has hung. With "Keep
   listening until found" ticked it shows the attempt number and total time

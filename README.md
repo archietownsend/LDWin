@@ -76,8 +76,8 @@ capture when done.
 
 Packet Monitor runs one capture at a time system-wide, so while LDWin is listening it takes
 over Packet Monitor: it replaces any `pktmon` filters you have set and clears them afterwards.
-If another Packet Monitor capture is already running, LDWin says so rather than stopping it;
-end it with `pktmon stop` and try again.
+If a Packet Monitor capture is already running (for example one left over from an
+earlier session), LDWin stops it and starts its own.
 
 ### Credits
 
