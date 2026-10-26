@@ -30,10 +30,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
@@ -69,7 +69,7 @@ jobs:
           Write-Host "Built LDWin-Setup.exe ($((Get-Item 'installer\Output\LDWin-Setup.exe').Length) bytes)"
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: LDWin ${{ inputs.tag || github.ref_name }}

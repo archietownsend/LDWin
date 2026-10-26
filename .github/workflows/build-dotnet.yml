@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
@@ -58,14 +58,14 @@ jobs:
           if (-not (Test-Path "installer\Output\LDWin-Setup.exe")) { throw "LDWin-Setup.exe was not produced" }
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LDWin-Setup
           path: installer/Output/LDWin-Setup.exe
           if-no-files-found: error
 
       - name: Upload LDWin artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LDWin-win-x64
           path: publish/
