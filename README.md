@@ -39,28 +39,48 @@ install .NET or a capture driver — just run `LDWin.exe` as administrator.
 ## How to use
 
 1. Start the program (it will request administrator rights).
-2. From the **Network Connection** drop-down, select the network adapter you want to listen on.
+2. From the **Network Connection** drop-down, select the wired adapter the cable is plugged into.
 3. Click **Get Link Data**.
-4. LDWin listens for a CDP/LLDP announcement — this can take up to 60 seconds.
-5. The decoded switch name, port, management address, VLAN, platform, etc. appear in the results panel.
-6. Use **Save Link Data** to write the results to a text file.
+4. LDWin listens for CDP/LLDP announcements for up to 60 seconds. Each switch appears in
+   the results panel as soon as its announcement arrives, with its name, port, management
+   address, VLAN, platform and more; listening continues in case more than one switch is
+   on the link. Click **Stop** once you have what you need.
+5. Use **Save Link Data** to write the results to a text file, or **Copy** to put them on
+   the clipboard.
 
-A valid TCP/IP address is not required to receive link information.
+Switches typically announce every 30 (LLDP) to 60 (CDP) seconds. If nothing turns up, tick
+**Keep listening until found** and LDWin will keep retrying until a switch announces itself
+or you click Stop. A valid TCP/IP address is not required to receive link information.
 
-> **Wi-Fi is not supported for link discovery.** A switch sends CDP/LLDP only to
-> whatever is directly plugged into its port - the access point, not your laptop -
-> and access points do not relay those announcements over the air. Selecting a
-> Wi-Fi adapter shows your current access point connection (SSID, BSSID, signal)
-> instead; for the switch and port a cable is plugged into, use a wired connection.
+### Wi-Fi
+
+Link discovery does not work over Wi-Fi. A switch sends CDP/LLDP only to whatever is directly
+plugged into its port — the access point, not your laptop — and access points do not relay
+those announcements over the air. Wi-Fi adapters are labelled **(Wi-Fi)** in the drop-down;
+selecting one shows your current access point connection (network name, access point BSSID,
+signal and link speed) instead.
+
+On Windows 11 24H2 and later, Windows only shares those Wi-Fi details with apps allowed to
+use location. If LDWin says access was blocked, turn on **Settings → Privacy & security →
+Location → Location services** and **Let desktop apps access your location**.
+
+## How it captures
+
+LDWin uses Windows Packet Monitor (`pktmon`), which ships with Windows and works with Core
+Isolation / Memory Integrity enabled. For each capture it tells Packet Monitor to log only
+LLDP and CDP frames on the selected adapter, reads them live as they arrive, and stops the
+capture when done.
+
+Packet Monitor runs one capture at a time system-wide, so while LDWin is listening it takes
+over Packet Monitor: it replaces any `pktmon` filters you have set and clears them afterwards.
+If another Packet Monitor capture is already running, LDWin says so rather than stopping it;
+end it with `pktmon stop` and try again.
 
 ## A note on antivirus / Windows Defender
 
 Because LDWin captures network traffic, Windows Defender may occasionally false-flag it.
-**It is not malware.** It captures with Windows' own Packet Monitor, never drops a
+**It is not malware.** It captures with Windows' own Packet Monitor, never drops or runs a
 separate sniffer binary, and builds carry proper version/publisher metadata.
-
-While a capture runs, LDWin takes over Packet Monitor, which allows one capture at a
-time system-wide: it replaces any `pktmon` filters and clears them afterwards.
 
 ### Credits
 
