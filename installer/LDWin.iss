@@ -11,7 +11,7 @@
 AppId={{EFD2FE55-8369-4B8F-BED1-7E97F2D68CA3}
 AppName=LDWin
 AppVersion={#AppVersion}
-AppPublisher=Chris Hall
+AppPublisher=archietownsend
 AppPublisherURL=https://github.com/archietownsend/LDWin
 DefaultDirName={autopf}\LDWin
 DisableProgramGroupPage=yes
