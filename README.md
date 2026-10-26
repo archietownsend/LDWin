@@ -76,12 +76,6 @@ over Packet Monitor: it replaces any `pktmon` filters you have set and clears th
 If another Packet Monitor capture is already running, LDWin says so rather than stopping it;
 end it with `pktmon stop` and try again.
 
-## A note on antivirus / Windows Defender
-
-Because LDWin captures network traffic, Windows Defender may occasionally false-flag it.
-**It is not malware.** It captures with Windows' own Packet Monitor, never drops or runs a
-separate sniffer binary, and builds carry proper version/publisher metadata.
-
 ### Credits
 
 LDWin was originally created by **Chris Hall** (2010–2014). Original repository: <https://github.com/chall32/LDWin>
