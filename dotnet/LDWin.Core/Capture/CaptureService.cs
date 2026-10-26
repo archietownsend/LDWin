@@ -193,10 +193,11 @@ public sealed class CaptureService : ICaptureService
     }
 
     /// <inheritdoc />
-    public WifiInfo? GetWifiInfo(AdapterInfo adapter)
+    public WifiInfo? GetWifiInfo(AdapterInfo adapter, out uint errorCode)
     {
         ArgumentNullException.ThrowIfNull(adapter);
 
+        errorCode = 0;
         if (!adapter.IsWireless)
         {
             return null;
@@ -205,15 +206,17 @@ public sealed class CaptureService : ICaptureService
         var guidText = ExtractGuid(adapter.Name);
         if (guidText is null || !Guid.TryParse(guidText, out var guid))
         {
+            errorCode = WifiInfoProvider.ErrorNotFound;
             return null;
         }
 
         try
         {
-            return _wifiInfo.GetCurrentConnection(guid);
+            return _wifiInfo.GetCurrentConnection(guid, out errorCode);
         }
         catch
         {
+            errorCode = WifiInfoProvider.ErrorUnexpected;
             return null;
         }
     }

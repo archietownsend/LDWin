@@ -4,19 +4,45 @@ namespace LDWin.Capture;
 
 /// <summary>
 /// Reads 802.11 association state via the Windows Native Wifi API
-/// (wlanapi.dll). Npcap/SharpPcap has no visibility into this - it only sees
-/// the Ethernet-translated unicast traffic a Wi-Fi adapter hands to NDIS.
+/// (wlanapi.dll). Packet capture has no visibility into this - a Wi-Fi
+/// adapter only hands Ethernet-translated frames up the stack.
 /// </summary>
 public sealed class WifiInfoProvider : IWifiInfoProvider
 {
+    public const uint ErrorAccessDenied = 5;
+    public const uint ErrorNotSupported = 50;
+    public const uint ErrorServiceNotActive = 1062;
+    public const uint ErrorNotFound = 1168;
+    public const uint ErrorInvalidState = 5023;
+    public const uint ErrorUnexpected = uint.MaxValue;
+
     private const uint ClientVersion = 2; // Windows Vista and later
     private const int OpcodeCurrentConnection = 7; // wlan_intf_opcode_current_connection
 
+    /// <summary>Explains a <see cref="GetCurrentConnection"/> error code to the user.</summary>
+    public static string DescribeError(uint errorCode) => errorCode switch
+    {
+        ErrorAccessDenied =>
+            "Windows blocked access to the Wi-Fi details.\n" +
+            "Windows 11 24H2 and later only share the network\n" +
+            "name and access point with apps allowed to use\n" +
+            "location. In Settings > Privacy & security >\n" +
+            "Location, turn on \"Location services\" and\n" +
+            "\"Let desktop apps access your location\", then\n" +
+            "try again.",
+        ErrorInvalidState => "This adapter is not connected to a Wi-Fi network.",
+        ErrorServiceNotActive => "The WLAN AutoConfig service is not running.",
+        ErrorNotFound => "Windows did not recognise this adapter as a Wi-Fi interface.",
+        ErrorNotSupported => "Reading Wi-Fi details is only supported on Windows.",
+        _ => $"Could not read the Wi-Fi details (error {errorCode}).",
+    };
+
     /// <inheritdoc />
-    public WifiInfo? GetCurrentConnection(Guid interfaceGuid)
+    public WifiInfo? GetCurrentConnection(Guid interfaceGuid, out uint errorCode)
     {
         if (!OperatingSystem.IsWindows())
         {
+            errorCode = ErrorNotSupported;
             return null;
         }
 
@@ -25,17 +51,24 @@ public sealed class WifiInfoProvider : IWifiInfoProvider
 
         try
         {
-            if (WlanOpenHandle(ClientVersion, IntPtr.Zero, out _, out clientHandle) != 0)
+            errorCode = WlanOpenHandle(ClientVersion, IntPtr.Zero, out _, out clientHandle);
+            if (errorCode != 0)
             {
                 return null;
             }
 
             var guid = interfaceGuid;
-            if (WlanQueryInterface(
-                    clientHandle, ref guid, OpcodeCurrentConnection, IntPtr.Zero,
-                    out _, out dataPtr, out _) != 0 ||
-                dataPtr == IntPtr.Zero)
+            errorCode = WlanQueryInterface(
+                clientHandle, ref guid, OpcodeCurrentConnection, IntPtr.Zero,
+                out _, out dataPtr, out _);
+            if (errorCode != 0)
             {
+                return null;
+            }
+
+            if (dataPtr == IntPtr.Zero)
+            {
+                errorCode = ErrorUnexpected;
                 return null;
             }
 
@@ -61,7 +94,7 @@ public sealed class WifiInfoProvider : IWifiInfoProvider
         }
         catch
         {
-            // Any interop/marshaling failure - treat as "unavailable".
+            errorCode = ErrorUnexpected;
             return null;
         }
         finally

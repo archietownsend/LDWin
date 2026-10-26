@@ -2,6 +2,11 @@ Release 3.0.7 - 26 Oct 2026
 ---------------------------
 * The window and taskbar now show the LDWin icon instead of the generic Windows
   application icon
+* Wi-Fi: when the access point details cannot be read, LDWin now says why
+  instead of silently omitting them. On Windows 11 24H2 and later this is
+  usually because desktop apps have not been given location access, which
+  Windows now requires before sharing the network name and access point
+* Wi-Fi explanation text is wrapped to fit the results box
 
 
 Release 3.0.6 - 26 Oct 2026

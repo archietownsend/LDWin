@@ -33,10 +33,11 @@ public interface ICaptureService
     /// <summary>
     /// Returns the current Wi-Fi association (SSID/BSSID/signal) for
     /// <paramref name="adapter"/>, or <see langword="null"/> if the adapter
-    /// is not wireless, is not currently associated, or the info could not be
-    /// read. This is AP association info, not switch/port discovery data -
-    /// see the <see cref="CaptureService"/> remarks on why CDP/LLDP cannot
-    /// reach a wireless station.
+    /// is not wireless (<paramref name="errorCode"/> 0) or the info could not
+    /// be read (<paramref name="errorCode"/> is the Win32 error; see
+    /// <see cref="WifiInfoProvider.DescribeError"/>). This is AP association
+    /// info, not switch/port discovery data - see the <see cref="CaptureService"/>
+    /// remarks on why CDP/LLDP cannot reach a wireless station.
     /// </summary>
-    WifiInfo? GetWifiInfo(AdapterInfo adapter);
+    WifiInfo? GetWifiInfo(AdapterInfo adapter, out uint errorCode);
 }

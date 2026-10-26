@@ -19,8 +19,8 @@ public interface IWifiInfoProvider
 {
     /// <summary>
     /// Returns the current association for the adapter identified by its
-    /// interface GUID, or <see langword="null"/> if unavailable (not
-    /// connected, the API call failed, or running off-Windows).
+    /// interface GUID, or <see langword="null"/> if unavailable, with the
+    /// Win32 error code in <paramref name="errorCode"/> (0 on success).
     /// </summary>
-    WifiInfo? GetCurrentConnection(Guid interfaceGuid);
+    WifiInfo? GetCurrentConnection(Guid interfaceGuid, out uint errorCode);
 }

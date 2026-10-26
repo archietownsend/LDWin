@@ -444,24 +444,28 @@ public sealed class MainForm : Form
 
     private void ShowWifiOnlyResult(AdapterInfo adapter)
     {
-        var wifi = _capture.GetWifiInfo(adapter);
+        var wifi = _capture.GetWifiInfo(adapter, out uint wifiError);
 
         var sb = new StringBuilder();
         sb.AppendLine("CDP/LLDP cannot be received over Wi-Fi.");
         sb.AppendLine();
-        sb.AppendLine("A switch sends CDP/LLDP only to whatever is directly plugged into its port -");
-        sb.AppendLine("the access point, not your laptop - and access points do not relay those");
-        sb.AppendLine("discovery frames over the air. Connect by Ethernet to see the switch and port");
-        sb.AppendLine("a cable is plugged into.");
+        sb.AppendLine("A switch sends CDP/LLDP only to whatever is plugged");
+        sb.AppendLine("into its port - the access point, not your laptop -");
+        sb.AppendLine("and access points do not relay those frames over the");
+        sb.AppendLine("air. Connect by Ethernet to see the switch and port.");
+        sb.AppendLine();
+        sb.AppendLine("-- Current Wi-Fi connection --");
 
         if (wifi is not null)
         {
-            sb.AppendLine();
-            sb.AppendLine("-- Current Wi-Fi connection --");
             sb.AppendLine($"SSID: {wifi.Ssid}");
             sb.AppendLine($"Access point (BSSID): {wifi.Bssid}");
             sb.AppendLine($"Signal quality: {wifi.SignalQualityPercent}%");
             sb.AppendLine($"Link speed: {wifi.LinkSpeedMbps} Mbps");
+        }
+        else
+        {
+            sb.AppendLine(WifiInfoProvider.DescribeError(wifiError).Replace("\n", Environment.NewLine));
         }
 
         _lastReport = sb.ToString();
@@ -470,7 +474,7 @@ public sealed class MainForm : Form
         _copyButton.Enabled = true;
         _statusLabel.Text = wifi is not null
             ? "Wi-Fi selected - showing access point info (CDP/LLDP needs a wired connection)."
-            : "Wi-Fi selected - CDP/LLDP needs a wired connection to the switch.";
+            : "Wi-Fi selected - access point info unavailable (see details below).";
     }
 
     // -------------------------------------------------------------------------

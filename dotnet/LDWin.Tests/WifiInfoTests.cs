@@ -18,10 +18,13 @@ public class WifiInfoTests
         public Guid? LastGuid { get; private set; }
         public WifiInfo? Result { get; set; }
 
-        public WifiInfo? GetCurrentConnection(Guid interfaceGuid)
+        public uint ErrorCode { get; set; }
+
+        public WifiInfo? GetCurrentConnection(Guid interfaceGuid, out uint errorCode)
         {
             CallCount++;
             LastGuid = interfaceGuid;
+            errorCode = ErrorCode;
             return Result;
         }
     }
@@ -53,7 +56,7 @@ public class WifiInfoTests
             IsWireless = false,
         };
 
-        var result = service.GetWifiInfo(adapter);
+        var result = service.GetWifiInfo(adapter, out _);
 
         Assert.Null(result);
         Assert.Equal(0, provider.CallCount);
@@ -74,7 +77,7 @@ public class WifiInfoTests
             IsWireless = true,
         };
 
-        var result = service.GetWifiInfo(adapter);
+        var result = service.GetWifiInfo(adapter, out _);
 
         Assert.Equal(1, provider.CallCount);
         Assert.Equal(expectedGuid, provider.LastGuid);
@@ -87,11 +90,37 @@ public class WifiInfoTests
     {
         var provider = new WifiInfoProvider();
 
-        var result = provider.GetCurrentConnection(Guid.NewGuid());
+        var result = provider.GetCurrentConnection(Guid.NewGuid(), out uint errorCode);
 
         if (!OperatingSystem.IsWindows())
         {
             Assert.Null(result);
+            Assert.Equal(WifiInfoProvider.ErrorNotSupported, errorCode);
         }
+    }
+
+    [Fact]
+    public void GetWifiInfo_ProviderFails_PassesErrorCodeThrough()
+    {
+        var provider = new FakeWifiInfoProvider { ErrorCode = WifiInfoProvider.ErrorAccessDenied };
+        var service = new CaptureService(new LDWin.Protocols.ILinkDecoder[0], provider);
+        var adapter = new AdapterInfo
+        {
+            Name = "\\Device\\NPF_{33333333-3333-3333-3333-333333333333}",
+            IsWireless = true,
+        };
+
+        var result = service.GetWifiInfo(adapter, out uint errorCode);
+
+        Assert.Null(result);
+        Assert.Equal(WifiInfoProvider.ErrorAccessDenied, errorCode);
+    }
+
+    [Fact]
+    public void DescribeError_AccessDenied_PointsAtLocationSetting()
+    {
+        var message = WifiInfoProvider.DescribeError(WifiInfoProvider.ErrorAccessDenied);
+
+        Assert.Contains("Location", message);
     }
 }
