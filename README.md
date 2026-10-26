@@ -32,10 +32,6 @@ Grab the latest **`LDWin-win-x64.zip`** from the [Releases page](../../releases/
 extract it, and run **`LDWin.exe`**. It is a self-contained build, so you do not need to
 install .NET or a capture driver — just run `LDWin.exe` as administrator.
 
-> The build is currently unsigned, so Windows SmartScreen may warn on first run — choose
-> **More info → Run anyway** (or right-click the exe → **Properties → Unblock**). A
-> publicly-trusted signature is planned to remove this.
-
 ## How to use
 
 1. Start the program (it will request administrator rights).

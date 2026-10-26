@@ -67,6 +67,3 @@ jobs:
             self-contained build: no .NET or capture driver to install. Run it as
             administrator on Windows 10 version 2004 or later, or Windows 11.
 
-            > Note: the build is currently unsigned, so Windows SmartScreen may warn on first
-            > run ("More info → Run anyway"). A trusted signature is planned.
-
