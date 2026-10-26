@@ -1,6 +1,6 @@
 name: Build LDWin (.NET)
 
-# CI build of the C# / WinForms LDWin. Produces a single self-contained LDWin.exe
+# CI build of the C# / WinForms LDWin. Produces a self-contained LDWin folder
 # that captures CDP/LLDP with Windows Packet Monitor (pktmon) and decodes it
 # in-process, and uploads it as a workflow artifact for verification.
 #
@@ -31,21 +31,22 @@ jobs:
       - name: Restore
         run: dotnet restore dotnet/LDWin/LDWin.csproj
 
-      - name: Publish (self-contained single-file win-x64)
+      # Same layout as release.yml (self-contained folder, not single-file) so the
+      # artifact behaves exactly like a release build.
+      - name: Publish (self-contained folder, win-x64)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           dotnet publish dotnet/LDWin/LDWin.csproj `
             -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:PublishSingleFile=false `
             -o publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
           if (-not (Test-Path "publish\LDWin.exe")) { throw "LDWin.exe was not produced" }
-          Write-Host "Built publish\LDWin.exe ($((Get-Item 'publish\LDWin.exe').Length) bytes)"
 
-      - name: Upload LDWin.exe artifact
+      - name: Upload LDWin artifact
         uses: actions/upload-artifact@v4
         with:
-          name: LDWin-dotnet
-          path: publish/LDWin.exe
+          name: LDWin-win-x64
+          path: publish/
           if-no-files-found: error
