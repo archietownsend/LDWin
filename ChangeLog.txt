@@ -8,6 +8,9 @@ Release 3.1.0 - 26 Oct 2026
 * If LDWin is closed mid-capture, the next capture stops the leftover Packet
   Monitor session instead of failing to start
 * The window title no longer shows an Npcap version
+* While listening, the status line counts down the seconds left and a progress
+  bar fills, so a quiet link no longer looks like LDWin has hung. With "Keep
+  listening until found" ticked it shows the attempt number and total time
 * LDWin now has a proper Windows installer (LDWin-Setup.exe): installs to Program
   Files, adds a Start menu shortcut (and optionally a desktop one), upgrades in
   place, and uninstalls from Settings > Apps. The portable zip is still published

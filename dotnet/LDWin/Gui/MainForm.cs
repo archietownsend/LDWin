@@ -28,9 +28,18 @@ public sealed class MainForm : Form
     private readonly CheckBox _keepListeningCheck;
     private readonly TextBox _resultsBox;
     private readonly Label _statusLabel;
+    private readonly ProgressBar _listenProgress;
+    private readonly System.Windows.Forms.Timer _listenTimer;
 
     private CancellationTokenSource? _captureCts;
     private string? _lastReport;
+
+    // Listening state shown by the countdown; only touched on the UI thread.
+    private readonly Stopwatch _attemptClock = new();
+    private readonly Stopwatch _totalClock = new();
+    private bool _keepListening;
+    private int _attempt;
+    private int _foundCount;
 
     // How long a single listen attempt runs before giving up (or retrying, if
     // "keep listening" is checked).
@@ -116,6 +125,18 @@ public sealed class MainForm : Form
             AutoSize = true
         };
 
+        _listenProgress = new ProgressBar
+        {
+            Location = new Point(220, 110),
+            Size = new Size(328, 18),
+            Maximum = ListenSeconds * 1000,
+            Visible = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+
+        _listenTimer = new System.Windows.Forms.Timer { Interval = 200 };
+        _listenTimer.Tick += (_, _) => UpdateListeningStatus();
+
         // ---- Status line ----
         _statusLabel = new Label
         {
@@ -157,6 +178,7 @@ public sealed class MainForm : Form
         Controls.Add(_saveButton);
         Controls.Add(_copyButton);
         Controls.Add(_keepListeningCheck);
+        Controls.Add(_listenProgress);
         Controls.Add(_statusLabel);
         Controls.Add(_resultsBox);
         Controls.Add(cdpLink);
@@ -334,7 +356,15 @@ public sealed class MainForm : Form
         _keepListeningCheck.Enabled = false;
 
         bool keepListening = _keepListeningCheck.Checked;
-        int attempt = 0;
+        _keepListening = keepListening;
+        _attempt = 0;
+        _foundCount = 0;
+        _listenProgress.Style = keepListening ? ProgressBarStyle.Marquee : ProgressBarStyle.Blocks;
+        _listenProgress.Value = 0;
+        _listenProgress.Visible = true;
+        _totalClock.Restart();
+        _attemptClock.Restart();
+        _listenTimer.Start();
 
         _captureCts?.Dispose();
         _captureCts = new CancellationTokenSource();
@@ -354,9 +384,8 @@ public sealed class MainForm : Form
             _resultsBox.Text = _lastReport;
             _saveButton.Enabled = true;
             _copyButton.Enabled = true;
-            _statusLabel.Text = liveNeighbours.Count == 1
-                ? $"Found 1 neighbour - still listening for more (up to {ListenSeconds}s total)..."
-                : $"Found {liveNeighbours.Count} neighbours - still listening for more (up to {ListenSeconds}s total)...";
+            _foundCount = liveNeighbours.Count;
+            UpdateListeningStatus();
         });
 
         try
@@ -365,11 +394,11 @@ public sealed class MainForm : Form
 
             do
             {
-                attempt++;
+                _attempt++;
                 liveNeighbours.Clear();
-                _statusLabel.Text = keepListening && attempt > 1
-                    ? $"Listening for all CDP/LLDP neighbours (attempt {attempt}, up to {ListenSeconds}s)..."
-                    : $"Listening for all CDP/LLDP neighbours (up to {ListenSeconds}s)...";
+                _foundCount = 0;
+                _attemptClock.Restart();
+                UpdateListeningStatus();
 
                 neighbours = await Task.Run(
                     () => _capture.CaptureAll(adapter, TimeSpan.FromSeconds(ListenSeconds), token, progress.Report),
@@ -377,7 +406,6 @@ public sealed class MainForm : Form
 
                 if (neighbours.Count == 0 && keepListening && !token.IsCancellationRequested)
                 {
-                    _statusLabel.Text = $"No response yet (attempt {attempt}), retrying...";
                     // Brief yield so the UI repaints before the next attempt.
                     await Task.Delay(100, token);
                 }
@@ -418,9 +446,50 @@ public sealed class MainForm : Form
         finally
         {
             // Restore UI regardless of outcome.
+            _listenTimer.Stop();
+            _listenProgress.Visible = false;
             _getButton.Text = "Get Link Data";
             _adapterCombo.Enabled = true;
             _keepListeningCheck.Enabled = true;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Countdown while listening, so a quiet link doesn't look like a hang
+    // -------------------------------------------------------------------------
+
+    private void UpdateListeningStatus()
+    {
+        int remaining = Math.Max(0, ListenSeconds - (int)_attemptClock.Elapsed.TotalSeconds);
+        string timeLeft = remaining > 0 ? $"{remaining}s left" : "finishing";
+
+        if (!_keepListening)
+        {
+            _listenProgress.Value = (int)Math.Min(_listenProgress.Maximum, _attemptClock.ElapsedMilliseconds);
+        }
+
+        string found = _foundCount switch
+        {
+            0 => "",
+            1 => "Found 1 neighbour - ",
+            _ => $"Found {_foundCount} neighbours - ",
+        };
+
+        if (_keepListening)
+        {
+            var total = _totalClock.Elapsed;
+            string soFar = total.TotalMinutes >= 1
+                ? $"{(int)total.TotalMinutes}m {total.Seconds}s"
+                : $"{total.Seconds}s";
+            _statusLabel.Text = _foundCount > 0
+                ? $"{found}still listening for more ({timeLeft})..."
+                : $"Listening for CDP/LLDP neighbours (attempt {_attempt}, {soFar} so far)...";
+        }
+        else
+        {
+            _statusLabel.Text = _foundCount > 0
+                ? $"{found}still listening for more ({timeLeft})..."
+                : $"Listening for CDP/LLDP neighbours ({timeLeft})...";
         }
     }
 
@@ -592,6 +661,7 @@ public sealed class MainForm : Form
     {
         if (disposing)
         {
+            _listenTimer.Dispose();
             _captureCts?.Dispose();
         }
 
