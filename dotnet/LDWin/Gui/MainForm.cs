@@ -32,7 +32,7 @@ public sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _listenTimer;
 
     private CancellationTokenSource? _captureCts;
-    private Task? _captureWork;
+    private Task<IReadOnlyList<LinkData>>? _captureWork;
     private string? _lastReport;
 
     // Listening state shown by the countdown; only touched on the UI thread.
