@@ -15,9 +15,9 @@
     <Company>Chris Hall</Company>
     <Description>LDWin - Link Discovery for Windows (CDP/LLDP)</Description>
     <Copyright>(c) Chris Hall 2010-2026</Copyright>
-    <Version>3.0.6</Version>
-    <FileVersion>3.0.6.0</FileVersion>
-    <AssemblyVersion>3.0.6.0</AssemblyVersion>
+    <Version>3.0.7</Version>
+    <FileVersion>3.0.7.0</FileVersion>
+    <AssemblyVersion>3.0.7.0</AssemblyVersion>
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\network.ico</ApplicationIcon>
@@ -27,6 +27,12 @@
          apps (unlike IL trimming, which is not enabled here). -->
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ApplicationIcon only sets the exe's file icon; the window/taskbar icon comes from
+         Form.Icon, so the same .ico is embedded and loaded by MainForm. -->
+    <EmbeddedResource Include="..\..\network.ico" LogicalName="LDWin.network.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- All capture/decoding logic lives in LDWin.Core (net8.0, no WinForms) so it can be

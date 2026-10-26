@@ -1,3 +1,9 @@
+Release 3.0.7 - 26 Oct 2026
+---------------------------
+* The window and taskbar now show the LDWin icon instead of the generic Windows
+  application icon
+
+
 Release 3.0.6 - 26 Oct 2026
 ---------------------------
 * Wi-Fi adapters are now detected and clearly labelled "(Wi-Fi)" in the Network

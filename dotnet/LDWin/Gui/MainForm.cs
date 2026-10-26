@@ -57,6 +57,14 @@ public sealed class MainForm : Form
         MinimizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
 
+        using (var iconStream = typeof(MainForm).Assembly.GetManifestResourceStream("LDWin.network.ico"))
+        {
+            if (iconStream is not null)
+            {
+                Icon = new Icon(iconStream);
+            }
+        }
+
         // ---- "Network Connection:" label ----
         var connectionLabel = new Label
         {
